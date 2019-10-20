@@ -1,0 +1,28 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp3.0</TargetFramework>
+
+    <IsPackable>false</IsPackable>
+    <GenerateProgramFile>false</GenerateProgramFile>
+    <Platforms>AnyCPU;x64</Platforms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FParsec" Version="1.0.3" />
+    <PackageReference Include="FsUnit" Version="3.5.0" />
+    <PackageReference Include="nunit" Version="3.12.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="3.15.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="Parser.fs" />
+    <Compile Include="Eval.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FScheme.Core\FScheme.Core.fsproj" />
+  </ItemGroup>
+
+</Project>
