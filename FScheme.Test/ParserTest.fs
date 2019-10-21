@@ -51,7 +51,10 @@ module ParserTests =
 
     [<Test>]
     let ``parse define`` () =
-        Parser.read "(define (add a b) (+ a b))" |> parseTest
+        Parser.read @"(define 
+                        (add a b) 
+                        (+ a b))" 
+            |> parseTest
             (should equal [Lisp.List [
                                 Lisp.Atom "define";
                                 Lisp.List [Lisp.Atom "add"; Lisp.Atom "a"; Lisp.Atom "b"];
