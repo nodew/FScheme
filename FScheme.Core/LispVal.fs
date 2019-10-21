@@ -1,11 +1,10 @@
 ﻿namespace FScheme.Core
 
-open System
-
 type Number =
     | Float of float
     | Integer of int32
 
+[<CustomEquality; NoComparison>]
 type Lisp =
     | Nil
     | Bool of bool
@@ -15,6 +14,22 @@ type Lisp =
     | Func of IFunc
     | Lambda of EnvCtx * IFunc
     | List of Lisp list
+    override x.Equals other =
+        let otherType = other.GetType()
+        let lispType = typeof<Lisp>
+        if (otherType = lispType || otherType.BaseType = lispType) then
+            let y = other :?> Lisp
+            match x, y with
+            | Nil, Nil -> true
+            | Bool a, Bool b -> a = b
+            | Atom a, Atom b -> a = b
+            | Number a, Number b -> a = b
+            | Text a, Text b -> a = b
+            | List a, List b -> List.zip a b |> List.forall (fun (a, b) -> a = b)
+            | _, _ -> false
+        else 
+            false
+    override x.GetHashCode () = hash x
 
 and Application = Lisp list
 

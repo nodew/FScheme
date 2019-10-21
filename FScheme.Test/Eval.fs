@@ -4,6 +4,7 @@ open NUnit.Framework
 open FsUnit
 open FScheme.Core
 open FParsec
+open Swensen.Unquote
 
 module EvalTest = 
     let toAst source = 
@@ -16,5 +17,7 @@ module EvalTest =
     let evalTest source = source |> toAst |> List.map (Eval.eval Eval.defaultEnv)
 
     [<Test>]
-    let ``eval add`` () = 
-        evalTest "(+ 1 2)" |> should equal [Number (Integer 3)]
+    let ``eval native expression`` () = 
+        test <@ evalTest "(+ 1 2)" = [Number (Integer 3)] @>
+
+    
