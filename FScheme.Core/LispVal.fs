@@ -49,6 +49,7 @@ type Error =
     | UnboundedVar of string
     | BadSpecialForm of string
     | NotFunction of Lisp
+    | ExpectedList of string
 
 [<AutoOpen>]
 module lispVal =
@@ -80,5 +81,6 @@ module lispVal =
         | UnboundedVar var -> var |> sprintf "Error Unbounded variable: %s"
         | BadSpecialForm s -> s |> sprintf "Error Bad Special Form: %s"
         | NotFunction var -> var |> print |> sprintf "Error Not a Function: %s"
+        | ExpectedList s -> sprintf "Error Expected List in funciton %s" s
 
     and throwException e = showError e |> failwith

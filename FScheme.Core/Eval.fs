@@ -44,7 +44,7 @@ module Eval =
         | _, [] -> []
         | (a1 :: aa), (b1 :: bb) -> op a1 b1 :: (zipWith op aa bb)
 
-    let updateEnv (env: EnvCtx) var e = 
+    let updateEnv (env: EnvCtx) var e =
         match e with
         | Func x   -> { env with funCtx = env.funCtx.Add(var, e)}
         | Lambda _ -> { env with funCtx = env.funCtx.Add(var, e)}
@@ -94,6 +94,22 @@ module Eval =
             | _ -> BadSpecialForm "if's first arg must eval into a boolean" |> throwException
         | List (Atom "if" :: _) -> BadSpecialForm "(if <bool> <s-expr> <s-expr>)" |> throwException
 
+        | List [Atom "cdr"; List [Atom "quote"; List (x :: xs)]] -> List xs
+        | List [Atom "cdr"; List (x :: xs)] ->
+            match x with
+            | Atom  _ ->
+                let value = eval env (List (x :: xs))
+                eval env (List [Atom "cdr"; value])
+            | _           -> List xs
+
+        | List [Atom "car"; List [Atom "quote"; List (x :: xs)]] -> x
+        | List [Atom "car"; List (x :: xs)] ->
+            match x with
+            | Atom  _ ->
+                let value = eval env (List (x :: xs))
+                eval env (List [Atom "car"; value])
+            | _           -> x
+
         | List (x :: xs) ->
             let funVar = eval env x
             let args = xs |> List.map (eval env)
@@ -116,9 +132,10 @@ module Eval =
 
     and evalForms (env: EnvCtx) (forms: Lisp list) =
         match forms with
-        | x :: [] -> eval env x
         | (List [Atom "define"; Atom var; defExpr]) :: rest ->
             let evalVal = eval env defExpr
             let newEnv = updateEnv env var evalVal
             evalForms newEnv rest
-        | _ -> failwith "Unexpected parameters"
+        | [x] -> eval env x
+        | [] -> Nil
+        | _ -> failwith "Invalid form"

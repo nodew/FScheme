@@ -48,6 +48,32 @@ module Primitives =
         | (Number (Integer x)) -> op x |> Bool
         |  x         -> TypeMismatch ("numeric op", x) |> throwException
 
+    let notOp bool = 
+        match bool with
+        | Bool true  -> Bool false
+        | Bool false -> Bool true
+        | _          -> TypeMismatch ("bool op", bool) |> throwException
+
+    let eqCmd = fun a b -> a = b |> Bool
+    
+    let cons (exprs : Lisp list) = 
+        match exprs with
+        | [x; List y] -> List (x :: y)
+        | [x; y] -> List [x; y]
+        | _ -> ExpectedList "cons, in second argumnet" |> throwException
+
+    let car = function
+        | [List []] -> Nil
+        | [List (x :: _)] -> x
+        | [] -> Nil
+        | _ -> ExpectedList "car" |> throwException
+
+    let cdr = function
+        | [List (_ :: xs)] -> List xs
+        | [List []] -> Nil
+        | [] -> Nil
+        | _ -> ExpectedList "cdr" |> throwException
+
     let mkFn fn = Func fn
 
     let primEnv: Map<string, Lisp> =
@@ -65,4 +91,10 @@ module Primitives =
                 Add("even?", integerBool (fun x -> x % 2 = 0) |> unop |> mkFn).
                 Add("odd?", integerBool (fun x -> x % 2 <> 0) |> unop |> mkFn).
                 Add("neg?", numBool (fun x -> x < 0.) |> unop |> mkFn).
-                Add("pos?", numBool (fun x -> x > 0.) |> unop |> mkFn)
+                Add("pos?", numBool (fun x -> x > 0.) |> unop |> mkFn).
+                Add("eq?", eqCmd |> binop |> mkFn).
+                Add("not", notOp |> unop |> mkFn).
+                Add("cons", cons |> mkFn).
+                Add("car", car |> mkFn).
+                Add("cdr", cdr |> mkFn)
+
