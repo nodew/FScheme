@@ -1,5 +1,7 @@
 ﻿namespace FScheme.Core
 
+open FParsec
+
 module Eval =
     let basicFunEnv =
         Primitives.primEnv.
@@ -55,12 +57,12 @@ module Eval =
         | Nil -> Nil
         | Number x -> Number x
         | Bool bool -> Bool bool
-        | Text s -> Text s
+        | Text s -> Lisp.Text s
         | Atom x -> getVar env x
         | List [Atom "quote"; expr] -> expr
 
-        | List [Atom "begin"; rest] -> evalForms env [rest]
-        | List (Atom "begin" :: rest) -> evalForms env rest
+        | List [Atom "begin"; rest] -> fst (evalForms env [rest])
+        | List (Atom "begin" :: rest) -> fst (evalForms env rest)
 
         | List [Atom "define"; varExpr; defExpr] ->
             let _ = ensureAtom varExpr
@@ -136,6 +138,11 @@ module Eval =
             let evalVal = eval env defExpr
             let newEnv = updateEnv env var evalVal
             evalForms newEnv rest
-        | [x] -> eval env x
-        | [] -> Nil
+        | [x] -> (eval env x, env)
+        | [] -> (Nil, env)
         | _ -> failwith "Invalid form"
+
+    let evalSource env source =
+        match Parser.readContent source with
+        | Success (ast, _, _) -> evalForms env ast
+        | Failure (err, _, _) -> PError err |> throwException

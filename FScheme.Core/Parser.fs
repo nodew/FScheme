@@ -72,5 +72,8 @@ module Parser =
 
     and application = spaces >>. (many lispVal) .>> spaces .>> eof
 
-    and read source =
+    and readExpr source =
+        run lispVal source
+
+    and readContent source =
         run application source

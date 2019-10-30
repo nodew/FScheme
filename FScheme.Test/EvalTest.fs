@@ -8,13 +8,13 @@ open Swensen.Unquote
 
 module EvalTest =
     let toAst source =
-        Parser.read source
+        Parser.readContent source
         |> fun result ->
             match result with
             | Success (x, _, _) -> x
             | Failure (msg, _, _) -> failwith msg
 
-    let evalTest source = source |> toAst |> Eval.evalForms Eval.defaultEnv
+    let evalTest source = source |> toAst |> Eval.evalForms Eval.defaultEnv |> fst
 
     [<Test>]
     let ``eval native expression`` () =

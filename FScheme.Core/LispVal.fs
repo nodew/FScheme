@@ -27,7 +27,7 @@ type Lisp =
             | Text a, Text b -> a = b
             | List a, List b -> List.zip a b |> List.forall (fun (a, b) -> a = b)
             | _, _ -> false
-        else 
+        else
             false
     override x.GetHashCode () = hash x
 
@@ -50,6 +50,7 @@ type Error =
     | BadSpecialForm of string
     | NotFunction of Lisp
     | ExpectedList of string
+    | PError of string
 
 [<AutoOpen>]
 module lispVal =
@@ -82,5 +83,6 @@ module lispVal =
         | BadSpecialForm s -> s |> sprintf "Error Bad Special Form: %s"
         | NotFunction var -> var |> print |> sprintf "Error Not a Function: %s"
         | ExpectedList s -> sprintf "Error Expected List in funciton %s" s
+        | PError s -> sprintf "Parser Error, expression cannot evaluate: %s" s
 
     and throwException e = showError e |> failwith
