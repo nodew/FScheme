@@ -2,6 +2,8 @@
 
 namespace FScheme.Core
 
+open System
+open System.IO
 open FParsec
 
 type LispParser = Parser<Lisp, unit>
@@ -9,20 +11,11 @@ type LispParser = Parser<Lisp, unit>
 module Parser =
     let number = attempt (pint32 .>> notFollowedBy (pchar '.') |>> Integer) <|>  (pfloat |>> Float) |>> Lisp.Number
 
-    let normalIdentifier: Parser<string, unit> =
-        let specialChar = pstring "/" <|> pstring "."
-        many1Chars letter .>>. opt (many1 (specialChar .>>. many1Chars letter))
-            |>> (fun (prefix, suffix) ->
-                    let mutable s = prefix
-                    if not suffix.IsNone then
-                        for (splitter, rest) in suffix.Value do
-                            s <- s + splitter + rest
-                    s
-                )
+    let normalIdentifier = many1Chars (choice [letter; pchar '/'; pchar '-'; pchar '?'; pchar '.'])
 
     let identifier =
-        let specialOperator = ["+"; "-"; "*"; "/"; ">"; "<"; ">="; "<="] |> List.map pstring |> choice
-        normalIdentifier <|> specialOperator
+        let specialOperator = ["+"; "-"; "*"; "/"; ">"; "<"; ">="; "<="; "=="] |> List.map pstring |> choice
+        attempt normalIdentifier  <|> specialOperator
 
     let pSingleLineComment:Parser<string, unit> =
         spaces >>. pstring ";" >>. many1CharsTill anyChar newline .>> newline
@@ -70,10 +63,17 @@ module Parser =
 
     and listVal = parens (spaces >>. (sepEndBy lispVal spaces)) |>> Lisp.List
 
-    and application = spaces >>. (many lispVal) .>> spaces .>> eof
+    and application = spaces >>. (many (lispVal .>> spaces)) .>> spaces .>> eof
 
     and readExpr source =
         run lispVal source
 
     and readContent source =
-        run application source
+        match run application source with
+        | Success (ast, _, _) -> ast
+        | Failure (err, _, _) -> PError err |> throwException
+
+    and readFile (filepath: string) =
+        use stream = new StreamReader(filepath)
+        let content = stream.ReadToEnd()
+        readContent content

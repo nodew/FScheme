@@ -12,8 +12,12 @@ module REPL =
             printfn "Exit"
             exit 0
         | _ ->
-            let (result, newEnv) = Eval.evalSource env input
-            result |> print |> printfn "%s"
-            run newEnv
+            match Eval.safeExec env input with
+            | Some (result, newEnv) ->
+                result |> print |> printfn "%s"
+                run newEnv
+            | None -> run env
 
-    let runREPL = run Eval.defaultEnv
+    let runREPL =
+        let env = Eval.envWithStd.Value
+        run env

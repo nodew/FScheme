@@ -7,14 +7,7 @@ open FParsec
 open Swensen.Unquote
 
 module EvalTest =
-    let toAst source =
-        Parser.readContent source
-        |> fun result ->
-            match result with
-            | Success (x, _, _) -> x
-            | Failure (msg, _, _) -> failwith msg
-
-    let evalTest source = source |> toAst |> Eval.evalForms Eval.defaultEnv |> fst
+    let evalTest source = source |> Eval.evalText |> fst
 
     [<Test>]
     let ``eval native expression`` () =
@@ -54,3 +47,8 @@ module EvalTest =
     let ``eval cons`` () =
         let expr = @"(cons 1 2)"
         test <@ evalTest expr = List [Number (Integer 1); Number (Integer 2)] @>
+
+    [<Test>]
+    let ``eval stdlib`` () =
+        let expr = @"(cadr '((1 2) 3))"
+        test <@ evalTest expr = Number (Integer 3) @>

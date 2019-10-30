@@ -93,6 +93,7 @@ module Primitives =
                 Add("neg?", numBool (fun x -> x < 0.) |> unop |> mkFn).
                 Add("pos?", numBool (fun x -> x > 0.) |> unop |> mkFn).
                 Add("eq?", eqCmd |> binop |> mkFn).
+                Add("null?", (eqCmd Nil) |> unop |> mkFn).
                 Add("not", notOp |> unop |> mkFn).
                 Add("cons", cons |> mkFn).
                 Add("car", car |> mkFn).

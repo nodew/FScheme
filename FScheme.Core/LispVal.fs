@@ -43,7 +43,7 @@ and EnvCtx = {
     funCtx: FunCtx;
 }
 
-type Error =
+type RuntimeError =
     | TypeMismatch of string * Lisp
     | NumArgs of int * Lisp list
     | UnboundedVar of string
@@ -51,6 +51,8 @@ type Error =
     | NotFunction of Lisp
     | ExpectedList of string
     | PError of string
+
+exception LispException of RuntimeError
 
 [<AutoOpen>]
 module lispVal =
@@ -85,4 +87,4 @@ module lispVal =
         | ExpectedList s -> sprintf "Error Expected List in funciton %s" s
         | PError s -> sprintf "Parser Error, expression cannot evaluate: %s" s
 
-    and throwException e = showError e |> failwith
+    and throwException e = raise (LispException(e))

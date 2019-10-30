@@ -1,8 +1,27 @@
 ﻿namespace FScheme.Core
 
+open System
+open System.IO
+open System.Reflection
+open System.Text
+open Microsoft.Extensions.FileProviders
 open FParsec
 
 module Eval =
+    let private getStdLibContent () =
+        let assembly = (typeof<Lisp>).GetTypeInfo().Assembly;
+        let embeddedProvider = EmbeddedFileProvider(assembly, "FScheme.Core");
+        let file = embeddedProvider.GetFileInfo(@"lib\stdlib.scm");
+        let stream = file.CreateReadStream();
+        use reader = new StreamReader(stream, Encoding.UTF8)
+        reader.ReadToEnd()
+
+    let getFileContent (filepath: string) =
+        if File.Exists(filepath) then
+            File.ReadAllText(filepath)
+        else
+            failwith "File does not exist."
+
     let basicFunEnv =
         Primitives.primEnv.
             Add("show", Primitives.unop (print >> Lisp.Text) |> Func)
@@ -143,6 +162,33 @@ module Eval =
         | _ -> failwith "Invalid form"
 
     let evalSource env source =
-        match Parser.readContent source with
-        | Success (ast, _, _) -> evalForms env ast
-        | Failure (err, _, _) -> PError err |> throwException
+        let ast = Parser.readContent source
+        evalForms env ast
+
+    let getEnvWithStdLib () =
+        let stdlibContent = getStdLibContent ()
+        let stdLibExprs = Parser.readContent stdlibContent
+        let (_, env) = evalForms defaultEnv stdLibExprs
+        env
+
+    let envWithStd = lazy (getEnvWithStdLib ())
+
+    let safeExec env source =
+        try
+            Some(evalSource env source)
+        with
+        | LispException ex ->
+            showError ex |> printfn "%s"
+            None
+        | ex ->
+            printfn "Unexpected internal error: %s" (ex.ToString())
+            None
+
+    let evalFile filepath =
+        let source = getFileContent filepath
+        let env = envWithStd.Value
+        evalSource env source
+
+    let evalText source =
+        let env = envWithStd.Value
+        evalSource env source
