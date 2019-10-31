@@ -48,15 +48,15 @@ module Primitives =
         | (Number (Integer x)) -> op x |> Bool
         |  x         -> TypeMismatch ("numeric op", x) |> throwException
 
-    let notOp bool = 
+    let notOp bool =
         match bool with
         | Bool true  -> Bool false
         | Bool false -> Bool true
         | _          -> TypeMismatch ("bool op", bool) |> throwException
 
     let eqCmd = fun a b -> a = b |> Bool
-    
-    let cons (exprs : Lisp list) = 
+
+    let cons (exprs : Lisp list) =
         match exprs with
         | [x; List y] -> List (x :: y)
         | [x; y] -> List [x; y]
@@ -73,6 +73,10 @@ module Primitives =
         | [List []] -> Nil
         | [] -> Nil
         | _ -> ExpectedList "cdr" |> throwException
+
+    let display = function
+        | (Text s) -> printf "%s" s; Nil
+        | other -> TypeMismatch("string op", other) |> throwException
 
     let mkFn fn = Func fn
 
@@ -97,5 +101,5 @@ module Primitives =
                 Add("not", notOp |> unop |> mkFn).
                 Add("cons", cons |> mkFn).
                 Add("car", car |> mkFn).
-                Add("cdr", cdr |> mkFn)
-
+                Add("cdr", cdr |> mkFn).
+                Add("display", display |> unop |> mkFn)

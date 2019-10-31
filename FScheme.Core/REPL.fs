@@ -18,6 +18,6 @@ module REPL =
                 run newEnv
             | None -> run env
 
-    let runREPL =
+    let runREPL () =
         let env = Eval.envWithStd.Value
         run env

@@ -157,9 +157,11 @@ module Eval =
             let evalVal = eval env defExpr
             let newEnv = updateEnv env var evalVal
             evalForms newEnv rest
-        | [x] -> (eval env x, env)
         | [] -> (Nil, env)
-        | _ -> failwith "Invalid form"
+        | [x] -> (eval env x, env)
+        | (x::xs) ->
+            eval env x |> ignore
+            evalForms env xs
 
     let evalSource env source =
         let ast = Parser.readContent source
