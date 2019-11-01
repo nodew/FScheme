@@ -10,20 +10,13 @@ type LispParser = Parser<Lisp, unit>
 module Parser =
     let number = attempt (pint32 .>> notFollowedBy (pchar '.') |>> Integer) <|>  (pfloat |>> Float) |>> Lisp.Number
 
-    let normalIdentifier = many1Chars (choice [letter; pchar '/'; pchar '-'; pchar '?'; pchar '.'])
+    let pComment = pstring ";" >>. restOfLine true |>> ignore
 
-    let identifier =
-        let specialOperator = ["+"; "-"; "*"; "/"; ">"; "<"; ">="; "<="; "=="] |> List.map pstring |> choice
-        attempt normalIdentifier  <|> specialOperator
+    let nil = pstring "'()" >>. preturn Lisp.Nil
 
-    let pSingleLineComment:Parser<string, unit> =
-        spaces >>. pstring ";" >>. many1CharsTill anyChar newline .>> newline
+    let atom = many1Chars (noneOf " ;\n()[],\\\"\'") |>> Lisp.Atom
 
-    let nil =
-        pstring "'()" >>. preturn Lisp.Nil
-
-    let atom =
-        identifier |>> Lisp.Atom
+    let spacesOrComment = spaces >>. opt pComment >>. spaces
 
     let stringLiteral: Parser<Lisp, unit> =
         let normalChar = satisfy (fun c -> c <> '\\' && c <> '"')
@@ -51,6 +44,7 @@ module Parser =
             atom;
             stringLiteral;
             quotedLispVal;
+            pUnquotedLispVal;
             listVal;
         ])
 
@@ -58,11 +52,15 @@ module Parser =
 
     and quoted p = pchar '\'' >>? p
 
+    and unquoted p = pchar ',' >>? p
+
     and quotedLispVal = quoted lispVal |>> fun x -> Lisp.List [Lisp.Atom "quote"; x]
 
-    and listVal = parens (spaces >>. (sepEndBy lispVal spaces)) |>> Lisp.List
+    and pUnquotedLispVal = unquoted lispVal |>> fun x -> Lisp.List[Lisp.Atom "unquote"; x]
 
-    and application : Parser<Application, unit> = spaces >>. (many (listVal .>> spaces)) .>> spaces .>> eof
+    and listVal = parens (spacesOrComment >>. (sepEndBy lispVal spacesOrComment)) |>> Lisp.List
+
+    and application : Parser<Application, unit> = spacesOrComment >>. (sepEndBy listVal (spacesOrComment)) .>> eof
 
     and readExpr source =
         match run (spaces >>. lispVal .>> spaces .>> eof) source with

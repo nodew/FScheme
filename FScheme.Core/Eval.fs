@@ -7,20 +7,11 @@ open Microsoft.Extensions.FileProviders
 open FParsec
 
 module Eval =
-    let primitives =
-        Primitives.primEnv.
-            Add("show", Primitives.unop (printExpr >> Lisp.Text) |> Func)
+    let defaultEnv = Primitives.primEnv
 
-    let defaultEnv = {
-        functions = primitives;
-        varibles = Map.empty
-    }
-
-    let getVar env key =
+    let getVar (env: Environment) key =
         let mutable value = Nil
-        if env.functions.TryGetValue(key, &value) then
-            value
-        elif env.varibles.TryGetValue(key, &value) then
+        if env.TryGetValue(key, &value) then
             value
         else
             UnboundedVar key |> throwException
@@ -50,11 +41,7 @@ module Eval =
         | _, [] -> []
         | (a1 :: aa), (b1 :: bb) -> op a1 b1 :: (zipWith op aa bb)
 
-    let updateEnv (env: Environment) var e =
-        match e with
-        | Func x   -> { env with functions = env.functions.Add(var, e)}
-        | Lambda _ -> { env with functions = env.functions.Add(var, e)}
-        | _        -> { env with varibles = env.varibles.Add(var, e)}
+    let updateEnv (env: Environment) var e = env.Add(var, e)
 
     let rec eval (env: Environment) expr =
         match expr with
@@ -128,11 +115,8 @@ module Eval =
 
     and bindArgsEval env parameters args expr =
         let newVars = zipWith (fun a b -> (extractVar a, b)) parameters args
-        let (newEnv, newFenv) = newVars |> List.partition (fun (a, b) -> isLambda b |> not)
-        let finalVaribles = newEnv |> List.fold (fun (s: VarEnv) (key, value) -> s.Add(key, value)) env.varibles
-        let finalFunctions = newFenv |> List.fold (fun (s: FuncEnv) (key, value) -> s.Add(key, value)) env.functions
-        let finalCtx = { varibles = finalVaribles; functions = finalFunctions }
-        eval finalCtx expr
+        let newEnv = newVars |> List.fold (fun (s: Environment) (key, value) -> s.Add(key, value)) env
+        eval newEnv expr
 
     and applyLambda (env: Environment) (expr: Lisp) (parameters: Lisp list) (args: Lisp list) = bindArgsEval env parameters args expr
 

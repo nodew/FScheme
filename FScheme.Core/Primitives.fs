@@ -80,26 +80,28 @@ module Primitives =
 
     let mkFn fn = Func fn
 
-    let primEnv: Map<string, Lisp> =
-        Map.empty.
-                Add("+", binopFold (numOp (+)) (Lisp.Number (Integer 0)) |> mkFn).
-                Add("*", binopFold (numOp (*)) (Lisp.Number (Integer 1)) |> mkFn).
-                Add("-", numOp (-) |> binop |> mkFn).
-                Add("/", numOp (/) |> binop |> mkFn).
-                Add("string-append", binopFold (stringOp (+)) (Lisp.Text "") |> mkFn).
-                Add("<", numCmp (<) |> binop |> mkFn).
-                Add(">", numCmp (>) |> binop |> mkFn).
-                Add(">=", numCmp (>=) |> binop |> mkFn).
-                Add("<=", numCmp (<=) |> binop |> mkFn).
-                Add("==", numCmp (=) |> binop |> mkFn).
-                Add("even?", integerBool (fun x -> x % 2 = 0) |> unop |> mkFn).
-                Add("odd?", integerBool (fun x -> x % 2 <> 0) |> unop |> mkFn).
-                Add("neg?", numBool (fun x -> x < 0.) |> unop |> mkFn).
-                Add("pos?", numBool (fun x -> x > 0.) |> unop |> mkFn).
-                Add("eq?", eqCmd |> binop |> mkFn).
-                Add("null?", (eqCmd Nil) |> unop |> mkFn).
-                Add("not", notOp |> unop |> mkFn).
-                Add("cons", cons |> mkFn).
-                Add("car", car |> mkFn).
-                Add("cdr", cdr |> mkFn).
-                Add("display", display |> unop |> mkFn)
+    let primEnv = Map.ofList [
+        ("+", binopFold (numOp (+)) (Lisp.Number (Integer 0)) |> mkFn)
+        ("*", binopFold (numOp (*)) (Lisp.Number (Integer 1)) |> mkFn)
+        ("-", numOp (-) |> binop |> mkFn)
+        ("/", numOp (/) |> binop |> mkFn)
+        ("string-append", binopFold (stringOp (+)) (Lisp.Text "") |> mkFn)
+        ("<", numCmp (<) |> binop |> mkFn)
+        (">", numCmp (>) |> binop |> mkFn)
+        (">=", numCmp (>=) |> binop |> mkFn)
+        ("<=", numCmp (<=) |> binop |> mkFn)
+        ("==", numCmp (=) |> binop |> mkFn)
+        ("even?", integerBool (fun x -> x % 2 = 0) |> unop |> mkFn)
+        ("odd?", integerBool (fun x -> x % 2 <> 0) |> unop |> mkFn)
+        ("neg?", numBool (fun x -> x < 0.) |> unop |> mkFn)
+        ("pos?", numBool (fun x -> x > 0.) |> unop |> mkFn)
+        ("eq?", eqCmd |> binop |> mkFn)
+        ("null?", (eqCmd Nil) |> unop |> mkFn)
+        ("not", notOp |> unop |> mkFn)
+        ("cons", cons |> mkFn)
+        ("car", car |> mkFn)
+        ("cdr", cdr |> mkFn)
+        ("display", display |> unop |> mkFn)
+        ("show", unop (printExpr >> Lisp.Text) |> Func)
+    ]
+

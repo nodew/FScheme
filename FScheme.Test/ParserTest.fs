@@ -59,3 +59,11 @@ module ParserTests =
         let expr = "(define (add a b) (+ a b))"
         Parser.readExpr expr
         |> fun result -> printExpr result |> should equal expr
+
+    [<Test>]
+    let ``parse comment`` () =
+        let expr = @"
+                    ; this is a comment
+                    (a)"
+        Parser.readContent expr |> Assert.NotNull
+

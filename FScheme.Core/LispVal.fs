@@ -35,13 +35,7 @@ and Application = Lisp list
 
 and IFunc = Lisp list -> Lisp
 
-and VarEnv = Map<string, Lisp>
-and FuncEnv = Map<string, Lisp>
-
-and Environment = {
-    varibles: VarEnv;
-    functions: FuncEnv;
-}
+and Environment = Map<string, Lisp>
 
 type RuntimeError =
     | TypeMismatch of string * Lisp
