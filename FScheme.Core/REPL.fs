@@ -12,9 +12,9 @@ module REPL =
             printfn "Exit"
             exit 0
         | _ ->
-            match Eval.safeExec env input with
+            match Eval.safeExec Eval.evalExpr env input with
             | Some (result, newEnv) ->
-                result |> print |> printfn "%s"
+                result |> printExpr |> printfn "%s"
                 run newEnv
             | None -> run env
 

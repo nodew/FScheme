@@ -2,7 +2,6 @@
 
 namespace FScheme.Core
 
-open System
 open System.IO
 open FParsec
 
@@ -63,10 +62,12 @@ module Parser =
 
     and listVal = parens (spaces >>. (sepEndBy lispVal spaces)) |>> Lisp.List
 
-    and application = spaces >>. (many (lispVal .>> spaces)) .>> spaces .>> eof
+    and application : Parser<Application, unit> = spaces >>. (many (listVal .>> spaces)) .>> spaces .>> eof
 
     and readExpr source =
-        run lispVal source
+        match run (spaces >>. lispVal .>> spaces .>> eof) source with
+        | Success (ast, _, _) -> ast
+        | Failure (err, _, _) -> PError err |> throwException
 
     and readContent source =
         match run application source with

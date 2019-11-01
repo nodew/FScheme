@@ -12,7 +12,7 @@ type Lisp =
     | Atom of string
     | Text of string
     | Func of IFunc
-    | Lambda of EnvCtx * IFunc
+    | Lambda of Environment * IFunc
     | List of Lisp list
     override x.Equals other =
         let otherType = other.GetType()
@@ -35,12 +35,12 @@ and Application = Lisp list
 
 and IFunc = Lisp list -> Lisp
 
-and VarCtx = Map<string, Lisp>
-and FunCtx = Map<string, Lisp>
+and VarEnv = Map<string, Lisp>
+and FuncEnv = Map<string, Lisp>
 
-and EnvCtx = {
-    varCtx: VarCtx;
-    funCtx: FunCtx;
+and Environment = {
+    varibles: VarEnv;
+    functions: FuncEnv;
 }
 
 type RuntimeError =
@@ -62,7 +62,7 @@ module lispVal =
 
     let private unwords = String.concat " "
 
-    let rec print = function
+    let rec printExpr = function
         | Nil -> "'()"
         | Bool true -> "#t"
         | Bool false -> "#f"
@@ -72,18 +72,18 @@ module lispVal =
         | Text s -> sprintf "\"%s\"" s
         | List lst -> unwordsList lst |> sprintf "(%s)"
         | Func _             -> "(internal function)"
-        | Lambda (ctx, expr) -> "(lambda function)"
+        | Lambda (_, __) -> "(lambda function)"
 
-    and private unwordsList lst = lst |> List.map print |> unwords
+    and private unwordsList lst = lst |> List.map printExpr |> unwords
 
-    and printApp app = app |> List.map print |> String.concat "\n"
+    and printApp (app: Application) = app |> List.map printExpr |> String.concat "\n"
 
     and showError = function
         | NumArgs (n, args) -> args |> unwordsList |> sprintf "Error Number Arguments, expected %d, received args %s" n
-        | TypeMismatch (txt, var) -> var |> print |> sprintf "Error Type Mismatch: %s %s" txt
+        | TypeMismatch (txt, var) -> var |> printExpr |> sprintf "Error Type Mismatch: %s %s" txt
         | UnboundedVar var -> var |> sprintf "Error Unbounded variable: %s"
         | BadSpecialForm s -> s |> sprintf "Error Bad Special Form: %s"
-        | NotFunction var -> var |> print |> sprintf "Error Not a Function: %s"
+        | NotFunction var -> var |> printExpr |> sprintf "Error Not a Function: %s"
         | ExpectedList s -> sprintf "Error Expected List in funciton %s" s
         | PError s -> sprintf "Parser Error, expression cannot evaluate: %s" s
 

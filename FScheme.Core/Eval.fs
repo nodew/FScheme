@@ -1,6 +1,5 @@
 ﻿namespace FScheme.Core
 
-open System
 open System.IO
 open System.Reflection
 open System.Text
@@ -8,34 +7,20 @@ open Microsoft.Extensions.FileProviders
 open FParsec
 
 module Eval =
-    let private getStdLibContent () =
-        let assembly = (typeof<Lisp>).GetTypeInfo().Assembly;
-        let embeddedProvider = EmbeddedFileProvider(assembly, "FScheme.Core");
-        let file = embeddedProvider.GetFileInfo(@"lib\stdlib.scm");
-        let stream = file.CreateReadStream();
-        use reader = new StreamReader(stream, Encoding.UTF8)
-        reader.ReadToEnd()
-
-    let getFileContent (filepath: string) =
-        if File.Exists(filepath) then
-            File.ReadAllText(filepath)
-        else
-            failwith "File does not exist."
-
-    let basicFunEnv =
+    let primitives =
         Primitives.primEnv.
-            Add("show", Primitives.unop (print >> Lisp.Text) |> Func)
+            Add("show", Primitives.unop (printExpr >> Lisp.Text) |> Func)
 
     let defaultEnv = {
-        funCtx = basicFunEnv;
-        varCtx = Map.empty
+        functions = primitives;
+        varibles = Map.empty
     }
 
     let getVar env key =
         let mutable value = Nil
-        if env.funCtx.TryGetValue(key, &value) then
+        if env.functions.TryGetValue(key, &value) then
             value
-        elif env.varCtx.TryGetValue(key, &value) then
+        elif env.varibles.TryGetValue(key, &value) then
             value
         else
             UnboundedVar key |> throwException
@@ -65,13 +50,13 @@ module Eval =
         | _, [] -> []
         | (a1 :: aa), (b1 :: bb) -> op a1 b1 :: (zipWith op aa bb)
 
-    let updateEnv (env: EnvCtx) var e =
+    let updateEnv (env: Environment) var e =
         match e with
-        | Func x   -> { env with funCtx = env.funCtx.Add(var, e)}
-        | Lambda _ -> { env with funCtx = env.funCtx.Add(var, e)}
-        | _        -> { env with varCtx = env.varCtx.Add(var, e)}
+        | Func x   -> { env with functions = env.functions.Add(var, e)}
+        | Lambda _ -> { env with functions = env.functions.Add(var, e)}
+        | _        -> { env with varibles = env.varibles.Add(var, e)}
 
-    let rec eval (env: EnvCtx) expr =
+    let rec eval (env: Environment) expr =
         match expr with
         | Nil -> Nil
         | Number x -> Number x
@@ -144,14 +129,14 @@ module Eval =
     and bindArgsEval env parameters args expr =
         let newVars = zipWith (fun a b -> (extractVar a, b)) parameters args
         let (newEnv, newFenv) = newVars |> List.partition (fun (a, b) -> isLambda b |> not)
-        let finalVarCtx = newEnv |> List.fold (fun (s: VarCtx) (key, value) -> s.Add(key, value)) env.varCtx
-        let finalFunCtx = newFenv |> List.fold (fun (s: FunCtx) (key, value) -> s.Add(key, value)) env.funCtx
-        let finalCtx = { varCtx = finalVarCtx; funCtx = finalFunCtx }
+        let finalVaribles = newEnv |> List.fold (fun (s: VarEnv) (key, value) -> s.Add(key, value)) env.varibles
+        let finalFunctions = newFenv |> List.fold (fun (s: FuncEnv) (key, value) -> s.Add(key, value)) env.functions
+        let finalCtx = { varibles = finalVaribles; functions = finalFunctions }
         eval finalCtx expr
 
-    and applyLambda (env: EnvCtx) (expr: Lisp) (parameters: Lisp list) (args: Lisp list) = bindArgsEval env parameters args expr
+    and applyLambda (env: Environment) (expr: Lisp) (parameters: Lisp list) (args: Lisp list) = bindArgsEval env parameters args expr
 
-    and evalForms (env: EnvCtx) (forms: Lisp list) =
+    and evalForms (env: Environment) (forms: Lisp list) =
         match forms with
         | (List [Atom "define"; Atom var; defExpr]) :: rest ->
             let evalVal = eval env defExpr
@@ -167,7 +152,15 @@ module Eval =
         let ast = Parser.readContent source
         evalForms env ast
 
-    let getEnvWithStdLib () =
+    let private getStdLibContent () =
+        let assembly = (typeof<Lisp>).GetTypeInfo().Assembly;
+        let embeddedProvider = EmbeddedFileProvider(assembly, "FScheme.Core");
+        let file = embeddedProvider.GetFileInfo(@"lib\stdlib.scm");
+        let stream = file.CreateReadStream();
+        use reader = new StreamReader(stream, Encoding.UTF8)
+        reader.ReadToEnd()
+
+    let private getEnvWithStdLib () =
         let stdlibContent = getStdLibContent ()
         let stdLibExprs = Parser.readContent stdlibContent
         let (_, env) = evalForms defaultEnv stdLibExprs
@@ -175,9 +168,9 @@ module Eval =
 
     let envWithStd = lazy (getEnvWithStdLib ())
 
-    let safeExec env source =
+    let safeExec op env source =
         try
-            Some(evalSource env source)
+            Some(op env source)
         with
         | LispException ex ->
             showError ex |> printfn "%s"
@@ -185,6 +178,12 @@ module Eval =
         | ex ->
             printfn "Unexpected internal error: %s" (ex.ToString())
             None
+
+    let getFileContent (filepath: string) =
+        if File.Exists(filepath) then
+            File.ReadAllText(filepath)
+        else
+            failwith "File does not exist."
 
     let evalFile filepath =
         let source = getFileContent filepath
@@ -194,3 +193,7 @@ module Eval =
     let evalText source =
         let env = envWithStd.Value
         evalSource env source
+
+    let evalExpr env source =
+        let expr = Parser.readExpr source
+        evalForms env [expr]

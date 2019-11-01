@@ -1,7 +1,8 @@
 ﻿// Learn more about F# at http://fsharp.org
 
-open FScheme.Core
+open System.Reflection
 open Argu
+open FScheme.Core
 
 [<NoAppSettings>]
 type CliArguments =
@@ -9,7 +10,7 @@ type CliArguments =
     | [<CliPrefix(CliPrefix.None)>] Run of string
     | [<CliPrefix(CliPrefix.None)>] Repl
     | Version
-    with 
+    with
         interface IArgParserTemplate with
             member this.Usage =
                 match this with
@@ -26,14 +27,15 @@ let main argv =
         let result = parser.ParseCommandLine(inputs = argv, raiseOnUsage = true)
         let repl = result.TryGetResult Repl
         if result.TryGetResult Version |> Option.isSome then
-            printfn "0.0.1"
+            let assemblyName = Assembly.GetEntryAssembly().GetName()
+            printfn "%s" (assemblyName.Version.ToString())
         elif repl.IsSome then
                REPL.runREPL () |> ignore
         else
             let file = result.TryGetResult Run
             let finalFile = if file.IsSome then file else result.TryGetResult File
             if finalFile.IsSome then
-                Eval.evalFile finalFile.Value |> fst |> print |> printfn "%s"
+                Eval.evalFile finalFile.Value |> fst |> printExpr |> printfn "%s"
             else
                 printfn "%s" usage
     with e ->
