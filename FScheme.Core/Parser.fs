@@ -28,7 +28,7 @@ module Parser =
         let escapedChar = pstring "\\" >>. (anyOf "\\nrt\"" |>> unescape)
         let s = between (pstring "\"") (pstring "\"")
                         (manyChars (normalChar <|> escapedChar))
-        s |>> Lisp.Text
+        s |>> Lisp.String
 
     let hashVal =
             pchar '#' >>. choice [

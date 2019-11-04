@@ -10,7 +10,7 @@ type Lisp =
     | Bool of bool
     | Number of Number
     | Atom of string
-    | Text of string
+    | String of string
     | Func of IFunc
     | Lambda of Environment * IFunc
     | List of Lisp list
@@ -24,7 +24,7 @@ type Lisp =
             | Bool a, Bool b -> a = b
             | Atom a, Atom b -> a = b
             | Number a, Number b -> a = b
-            | Text a, Text b -> a = b
+            | String a, String b -> a = b
             | List a, List b -> List.zip a b |> List.forall (fun (a, b) -> a = b)
             | _, _ -> false
         else
@@ -35,7 +35,9 @@ and Application = Lisp list
 
 and IFunc = Lisp list -> Lisp
 
-and Environment = Map<string, Lisp>
+and Frame = Map<string, Lisp ref> ref
+
+and Environment = Frame list
 
 type RuntimeError =
     | TypeMismatch of string * Lisp
@@ -63,7 +65,7 @@ module lispVal =
         | Number (Integer n) -> string(n)
         | Number (Float n) -> string(n)
         | Atom atom -> atom
-        | Text s -> sprintf "\"%s\"" s
+        | String s -> sprintf "\"%s\"" s
         | List lst -> unwordsList lst |> sprintf "(%s)"
         | Func _             -> "(internal function)"
         | Lambda (_, __) -> "(lambda function)"

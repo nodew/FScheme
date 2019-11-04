@@ -24,7 +24,7 @@ module ParserTests =
 
     [<Test>]
     let ``parse string`` () =
-        Parser.readExpr "\"str\\\\ning\"" |> should equal (Lisp.Text "str\\ning")
+        Parser.readExpr "\"str\\\\ning\"" |> should equal (Lisp.String "str\\ning")
 
     [<Test>]
     let ``parse bool`` () =

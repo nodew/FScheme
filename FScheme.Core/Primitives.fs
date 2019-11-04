@@ -34,10 +34,10 @@ module Primitives =
 
     let stringOp op x y =
         match x,y with
-        | (Lisp.Text x), (Lisp.Text y) -> op x y |> Lisp.Text
-        | Nil,        (Lisp.Text y)    -> Lisp.Text y
-        | (Lisp.Text x), Nil           -> Lisp.Text x
-        | (Lisp.Text x),  y            -> TypeMismatch ("string op", y) |> throwException
+        | (Lisp.String x), (Lisp.String y) -> op x y |> Lisp.String
+        | Nil,        (Lisp.String y)    -> Lisp.String y
+        | (Lisp.String x), Nil           -> Lisp.String x
+        | (Lisp.String x),  y            -> TypeMismatch ("string op", y) |> throwException
         | x,           _               -> TypeMismatch ("string op", x) |> throwException
 
     let numBool op = function
@@ -74,18 +74,20 @@ module Primitives =
         | [] -> Nil
         | _ -> ExpectedList "cdr" |> throwException
 
+    let list args = List args
+
     let display = function
-        | (Text s) -> printf "%s" s; Nil
+        | (String s) -> printf "%s" s; Nil
         | other -> TypeMismatch("string op", other) |> throwException
 
-    let mkFn fn = Func fn
+    let mkFn fn = ref (Func fn)
 
     let primEnv = Map.ofList [
         ("+", binopFold (numOp (+)) (Lisp.Number (Integer 0)) |> mkFn)
         ("*", binopFold (numOp (*)) (Lisp.Number (Integer 1)) |> mkFn)
         ("-", numOp (-) |> binop |> mkFn)
         ("/", numOp (/) |> binop |> mkFn)
-        ("string-append", binopFold (stringOp (+)) (Lisp.Text "") |> mkFn)
+        ("string-append", binopFold (stringOp (+)) (Lisp.String "") |> mkFn)
         ("<", numCmp (<) |> binop |> mkFn)
         (">", numCmp (>) |> binop |> mkFn)
         (">=", numCmp (>=) |> binop |> mkFn)
@@ -101,7 +103,8 @@ module Primitives =
         ("cons", cons |> mkFn)
         ("car", car |> mkFn)
         ("cdr", cdr |> mkFn)
+        ("list", list |> mkFn)
         ("display", display |> unop |> mkFn)
-        ("show", unop (printExpr >> Lisp.Text) |> Func)
+        ("show", unop (printExpr >> Lisp.String) |> mkFn)
     ]
 

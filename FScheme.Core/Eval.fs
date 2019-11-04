@@ -7,14 +7,14 @@ open Microsoft.Extensions.FileProviders
 open FParsec
 
 module Eval =
-    let defaultEnv = Primitives.primEnv
+    let defaultEnv = [ref Primitives.primEnv]
 
-    let getVar (env: Environment) key =
-        let mutable value = Nil
-        if env.TryGetValue(key, &value) then
-            value
-        else
-            UnboundedVar key |> throwException
+    let extends env bindings = ref (Map.ofList bindings) :: env
+
+    let lookup (env: Environment) key =
+        match List.tryPick (fun (frame: Frame) -> Map.tryFind key frame.Value) env with
+        | Some value -> value
+        | _ -> UnboundedVar key |> throwException
 
     let isLambda = function
         | List (Atom "lambda" :: _) -> true
@@ -41,24 +41,22 @@ module Eval =
         | _, [] -> []
         | (a1 :: aa), (b1 :: bb) -> op a1 b1 :: (zipWith op aa bb)
 
-    let updateEnv (env: Environment) var e = env.Add(var, e)
-
     let rec eval (env: Environment) expr =
         match expr with
         | Nil -> Nil
         | Number x -> Number x
         | Bool bool -> Bool bool
-        | Text s -> Lisp.Text s
-        | Atom x -> getVar env x
+        | String s -> Lisp.String s
+        | Atom x -> (lookup env x).Value
         | List [Atom "quote"; expr] -> expr
 
         | List [Atom "begin"; rest] -> fst (evalForms env [rest])
         | List (Atom "begin" :: rest) -> fst (evalForms env rest)
 
-        | List [Atom "define"; varExpr; defExpr] ->
-            let _ = ensureAtom varExpr
-            let _ = eval env defExpr
-            bindArgsEval env [varExpr] [defExpr] varExpr
+        | List [Atom "define"; Atom s; defExpr] ->
+            let expr = eval env defExpr
+            env.Head := Map.add s (ref expr) env.Head.Value
+            eval env (Atom s)
 
         | List [Atom "let"; List (pairs : Lisp list); expr] ->
             let (atoms, vals) =
@@ -114,21 +112,17 @@ module Eval =
         | _ -> failwith "Unsupport pattern"
 
     and bindArgsEval env parameters args expr =
-        let newVars = zipWith (fun a b -> (extractVar a, b)) parameters args
-        let newEnv = newVars |> List.fold (fun (s: Environment) (key, value) -> s.Add(key, value)) env
+        let bindings = zipWith (fun a b -> (extractVar a, ref b)) parameters args
+        let newEnv = extends env bindings
         eval newEnv expr
 
     and applyLambda (env: Environment) (expr: Lisp) (parameters: Lisp list) (args: Lisp list) = bindArgsEval env parameters args expr
 
     and evalForms (env: Environment) (forms: Lisp list) =
         match forms with
-        | (List [Atom "define"; Atom var; defExpr]) :: rest ->
-            let evalVal = eval env defExpr
-            let newEnv = updateEnv env var evalVal
-            evalForms newEnv rest
         | [] -> (Nil, env)
         | [x] -> (eval env x, env)
-        | (x::xs) ->
+        | x :: xs ->
             eval env x |> ignore
             evalForms env xs
 

@@ -5,7 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="lib\stdlib.scm">
-      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
