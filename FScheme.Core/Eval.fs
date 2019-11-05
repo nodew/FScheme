@@ -7,33 +7,30 @@ open Microsoft.Extensions.FileProviders
 open FParsec
 
 module Eval =
-    let defaultEnv = [ref Primitives.primEnv]
+    let environment = [ref Primitives.primEnv]
 
     let extends env bindings = ref (Map.ofList bindings) :: env
 
     let lookup (env: Environment) key =
         match List.tryPick (fun (frame: Frame) -> Map.tryFind key frame.Value) env with
         | Some value -> value
-        | _ -> UnboundedVar key |> throwException
-
-    let isLambda = function
-        | List (Atom "lambda" :: _) -> true
-        | _  -> false
+        | _ -> UnboundedVarException key |> raise
 
     let ensureAtom = function
         | Atom atom -> Atom atom
-        | n -> TypeMismatch ("expected an atomic value", n) |> throwException
+        | n -> TypeMismatchException ("expected an atomic value", n) |> raise
 
     let extractVar = function
         | (Atom atom) -> atom
-        | n -> TypeMismatch ("expected an atomic value", n) |> throwException
+        | n -> TypeMismatchException ("expected an atomic value", n) |> raise
 
-    let rec getEven = function
-        | [] -> []
-        | x :: xs -> x :: getOdd xs
-    and getOdd = function
-        | [] -> []
-        | _ :: xs -> getEven xs
+    let testTrue = function
+        | Bool false -> false
+        | String "" -> false
+        | Number (Integer 0) -> false
+        | Number (Float 0.) -> false
+        | Nil -> false
+        | _ -> true
 
     let rec zipWith op a b =
         match a, b with
@@ -50,40 +47,48 @@ module Eval =
         | Atom x -> (lookup env x).Value
         | List [Atom "quote"; expr] -> expr
 
-        | List [Atom "begin"; rest] -> fst (evalForms env [rest])
-        | List (Atom "begin" :: rest) -> fst (evalForms env rest)
+        | List [Atom "begin"; rest] -> evalForms env [rest]
+        | List (Atom "begin" :: rest) -> evalForms env rest
 
-        | List [Atom "define"; Atom s; defExpr] ->
+        | List [Atom "define"; varDef; defExpr] ->
+            ensureAtom varDef |> ignore
             let expr = eval env defExpr
-            env.Head := Map.add s (ref expr) env.Head.Value
-            eval env (Atom s)
+            env.Head := Map.add (extractVar varDef) (ref expr) env.Head.Value
+            eval env varDef
 
         | List [Atom "let"; List (pairs : Lisp list); expr] ->
             let (atoms, vals) =
                 pairs
                 |> List.fold (fun (atoms, vals) pair ->
                     match pair with
-                    | List [binding; value] -> (ensureAtom binding :: atoms, eval env value :: vals)
-                    | _ -> BadSpecialForm "let function expects list of parameters\n(let ((atom value) ...) <s-expr>)"
-                           |> throwException
+                    | List [binding; value] -> ((extractVar binding) :: atoms, ref (eval env value) :: vals)
+                    | _ -> MalformException "let function expects list of parameters\n(let ((atom value) ...) <s-expr>)"
+                           |> raise
                 ) ([], [])
-            bindArgsEval env atoms vals expr
+            let bindings = List.zip atoms vals
+            let env' = extends env bindings
+            eval env' expr
         | List (Atom "let" :: _) ->
-            BadSpecialForm "let function expects list of parameters and S-Expression body\n(let <pairs> <s-expr>)"
-            |> throwException
+            MalformException "let function expects list of parameters and S-Expression body\n(let <pairs> <s-expr>)"
+            |> raise
 
         | List [Atom "lambda"; List parameters; expr] ->
-            Lambda (env, applyLambda env expr parameters)
+            parameters |> List.map ensureAtom |> ignore
+            let fn args =
+                let bindings = zipWith (fun binding value -> (extractVar binding, ref value)) parameters args
+                let env' = extends env bindings
+                eval env' expr
+            Func fn
+
         | List (Atom "lambda" :: _) ->
-            BadSpecialForm "lambda function expects list of parameters and S-Expression body\n(lambda <params> <s-expr>)"
-            |> throwException
+            MalformException "lambda function expects list of parameters and S-Expression body\n(lambda <params> <s-expr>)"
+            |> raise
 
         | List [Atom "if"; pred; trueExpr; falseExpr] ->
-            match eval env pred with
-            | Bool true -> eval env trueExpr
-            | Bool false -> eval env falseExpr
-            | _ -> BadSpecialForm "if's first arg must eval into a boolean" |> throwException
-        | List (Atom "if" :: _) -> BadSpecialForm "(if <bool> <s-expr> <s-expr>)" |> throwException
+            if testTrue (eval env pred) then
+                eval env trueExpr
+            else eval env falseExpr
+        | List (Atom "if" :: _) -> MalformException "(if <expr> <s-expr> <s-expr>)" |> raise
 
         | List [Atom "cdr"; List [Atom "quote"; List (x :: xs)]] -> List xs
         | List [Atom "cdr"; List (x :: xs)] ->
@@ -106,29 +111,21 @@ module Eval =
             let args = xs |> List.map (eval env)
             match funVar with
             | Func funcall -> funcall args
-            | Lambda (beforeEnv, funcall) -> eval beforeEnv (funcall args)
-            | _ -> NotFunction funVar |> throwException
+            | _ -> NotFunctionException funVar |> raise
 
-        | _ -> failwith "Unsupport pattern"
-
-    and bindArgsEval env parameters args expr =
-        let bindings = zipWith (fun a b -> (extractVar a, ref b)) parameters args
-        let newEnv = extends env bindings
-        eval newEnv expr
-
-    and applyLambda (env: Environment) (expr: Lisp) (parameters: Lisp list) (args: Lisp list) = bindArgsEval env parameters args expr
+        | _ -> MalformException "Malform expression" |> raise
 
     and evalForms (env: Environment) (forms: Lisp list) =
         match forms with
-        | [] -> (Nil, env)
-        | [x] -> (eval env x, env)
+        | [] -> Nil
+        | [x] -> eval env x
         | x :: xs ->
             eval env x |> ignore
             evalForms env xs
 
-    let evalSource env source =
+    let evalSource source =
         let ast = Parser.readContent source
-        evalForms env ast
+        evalForms environment ast
 
     let private getStdLibContent () =
         let assembly = (typeof<Lisp>).GetTypeInfo().Assembly;
@@ -138,24 +135,12 @@ module Eval =
         use reader = new StreamReader(stream, Encoding.UTF8)
         reader.ReadToEnd()
 
-    let private getEnvWithStdLib () =
+    let loadStdEnv () =
         let stdlibContent = getStdLibContent ()
         let stdLibExprs = Parser.readContent stdlibContent
-        let (_, env) = evalForms defaultEnv stdLibExprs
-        env
+        evalForms environment stdLibExprs |> ignore
 
-    let envWithStd = lazy (getEnvWithStdLib ())
-
-    let safeExec op env source =
-        try
-            Some(op env source)
-        with
-        | LispException ex ->
-            showError ex |> printfn "%s"
-            None
-        | ex ->
-            printfn "Unexpected internal error: %s" (ex.ToString())
-            None
+    loadStdEnv ()
 
     let getFileContent (filepath: string) =
         if File.Exists(filepath) then
@@ -165,12 +150,10 @@ module Eval =
 
     let evalFile filepath =
         let source = getFileContent filepath
-        let env = envWithStd.Value
-        evalSource env source
+        evalSource source
 
     let evalText source =
-        let env = envWithStd.Value
-        evalSource env source
+        evalSource source
 
     let evalExpr env source =
         let expr = Parser.readExpr source

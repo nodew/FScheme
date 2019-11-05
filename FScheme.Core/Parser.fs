@@ -65,12 +65,12 @@ module Parser =
     and readExpr source =
         match run (spaces >>. lispVal .>> spaces .>> eof) source with
         | Success (ast, _, _) -> ast
-        | Failure (err, _, _) -> PError err |> throwException
+        | Failure (err, _, _) -> PErrorException err |> raise
 
     and readContent source =
         match run application source with
         | Success (ast, _, _) -> ast
-        | Failure (err, _, _) -> PError err |> throwException
+        | Failure (err, _, _) -> PErrorException err |> raise
 
     and readFile (filepath: string) =
         use stream = new StreamReader(filepath)

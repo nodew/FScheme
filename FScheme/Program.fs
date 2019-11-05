@@ -30,12 +30,12 @@ let main argv =
             let assemblyName = Assembly.GetEntryAssembly().GetName()
             printfn "%s" (assemblyName.Version.ToString())
         elif repl.IsSome then
-               REPL.runREPL () |> ignore
+                REPL.runREPL ()
         else
             let file = result.TryGetResult Run
             let finalFile = if file.IsSome then file else result.TryGetResult File
             if finalFile.IsSome then
-                Eval.evalFile finalFile.Value |> fst |> printExpr |> printfn "%s"
+                Eval.evalFile finalFile.Value |> printExpr |> printfn "%s"
             else
                 printfn "%s" usage
     with e ->

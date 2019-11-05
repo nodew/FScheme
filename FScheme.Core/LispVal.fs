@@ -12,7 +12,6 @@ type Lisp =
     | Atom of string
     | String of string
     | Func of IFunc
-    | Lambda of Environment * IFunc
     | List of Lisp list
     override x.Equals other =
         let otherType = other.GetType()
@@ -39,16 +38,14 @@ and Frame = Map<string, Lisp ref> ref
 
 and Environment = Frame list
 
-type RuntimeError =
-    | TypeMismatch of string * Lisp
-    | NumArgs of int * Lisp list
-    | UnboundedVar of string
-    | BadSpecialForm of string
-    | NotFunction of Lisp
-    | ExpectedList of string
-    | PError of string
-
-exception LispException of RuntimeError
+/// exceptions
+exception TypeMismatchException of string * Lisp
+exception NumArgsException of int * Lisp list
+exception UnboundedVarException of string
+exception MalformException of string
+exception NotFunctionException of Lisp
+exception ExpectedListException of string
+exception PErrorException of string
 
 [<AutoOpen>]
 module lispVal =
@@ -67,20 +64,18 @@ module lispVal =
         | Atom atom -> atom
         | String s -> sprintf "\"%s\"" s
         | List lst -> unwordsList lst |> sprintf "(%s)"
-        | Func _             -> "(internal function)"
-        | Lambda (_, __) -> "(lambda function)"
+        | Func _         -> "(internal function)"
 
     and private unwordsList lst = lst |> List.map printExpr |> unwords
 
     and printApp (app: Application) = app |> List.map printExpr |> String.concat "\n"
 
     and showError = function
-        | NumArgs (n, args) -> args |> unwordsList |> sprintf "Error Number Arguments, expected %d, received args %s" n
-        | TypeMismatch (txt, var) -> var |> printExpr |> sprintf "Error Type Mismatch: %s %s" txt
-        | UnboundedVar var -> var |> sprintf "Error Unbounded variable: %s"
-        | BadSpecialForm s -> s |> sprintf "Error Bad Special Form: %s"
-        | NotFunction var -> var |> printExpr |> sprintf "Error Not a Function: %s"
-        | ExpectedList s -> sprintf "Error Expected List in funciton %s" s
-        | PError s -> sprintf "Parser Error, expression cannot evaluate: %s" s
-
-    and throwException e = raise (LispException(e))
+        | NumArgsException (n, args) -> args |> unwordsList |> sprintf "Error Number Arguments, expected %d, received args %s" n
+        | TypeMismatchException (txt, var) -> var |> printExpr |> sprintf "Error Type Mismatch: %s %s" txt
+        | UnboundedVarException var -> var |> sprintf "Error Unbounded variable: %s"
+        | MalformException s -> s |> sprintf "Error Bad Special Form: %s"
+        | NotFunctionException var -> var |> printExpr |> sprintf "Error Not a Function: %s"
+        | ExpectedListException s -> sprintf "Error Expected List in funciton %s" s
+        | PErrorException s -> sprintf "Parser Error, expression cannot evaluate: %s" s
+        | ex -> sprintf "Unexpected internal error: %s" (ex.ToString())

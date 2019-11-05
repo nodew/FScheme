@@ -7,7 +7,7 @@ open FParsec
 open Swensen.Unquote
 
 module EvalTest =
-    let evalTest source = source |> Eval.evalText |> fst
+    let evalTest source = source |> Eval.evalText
 
     [<Test>]
     let ``eval native expression`` () =
