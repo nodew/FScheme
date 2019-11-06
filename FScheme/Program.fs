@@ -35,7 +35,7 @@ let main argv =
             let file = result.TryGetResult Run
             let finalFile = if file.IsSome then file else result.TryGetResult File
             if finalFile.IsSome then
-                Eval.evalFile finalFile.Value |> printExpr |> printfn "%s"
+                Eval.evalFile finalFile.Value |> ignore
             else
                 printfn "%s" usage
     with e ->

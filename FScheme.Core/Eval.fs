@@ -16,6 +16,12 @@ module Eval =
         | Some value -> value
         | _ -> UnboundedVarException key |> raise
 
+    let updateEnv (env: Environment) key value =
+        if env.Head.Value.ContainsKey(key) then
+            VarHasBeenBoundedException key |> raise
+        else
+            env.Head := Map.add key (ref value) env.Head.Value
+
     let ensureAtom = function
         | Atom atom -> Atom atom
         | n -> TypeMismatchException ("expected an atomic value", n) |> raise
@@ -45,16 +51,46 @@ module Eval =
         | Bool bool -> Bool bool
         | String s -> Lisp.String s
         | Atom x -> (lookup env x).Value
-        | List [Atom "quote"; expr] -> expr
+        | List [Atom "quote"; expr] ->
+            let rec unquote = function
+                | List [Atom "unquote"; e] -> eval env e
+                | List (Atom "unquote" :: _) -> MalformException "unquote (too many args)" |> raise
+                | List lst -> List.fold (fun acc item -> (unquote item) :: acc) [] lst |> List.rev |> List
+                | e -> e
+            unquote expr
 
         | List [Atom "begin"; rest] -> evalForms env [rest]
         | List (Atom "begin" :: rest) -> evalForms env rest
 
-        | List [Atom "define"; varDef; defExpr] ->
-            ensureAtom varDef |> ignore
+        | List [Atom "define"; Atom name; defExpr] ->
             let expr = eval env defExpr
-            env.Head := Map.add (extractVar varDef) (ref expr) env.Head.Value
-            eval env varDef
+            updateEnv env name expr |> ignore
+            eval env (Atom name)
+        | List (Atom "define" :: _) ->
+            MalformException "(define name <s-expr>)" |> raise
+
+        | List [Atom "defun"; Atom name; List parameters; defExpr] ->
+            parameters |> List.map ensureAtom |> ignore
+            let expr = lambda env parameters defExpr |> Func
+            updateEnv env name expr
+            expr
+        | List (Atom "defun" :: _) ->
+            MalformException "(defun name (parameters) <s-expr>)" |> raise
+
+        | List [Atom "defmacro"; Atom name; List parameters; defExpr] ->
+            parameters |> List.map ensureAtom |> ignore
+            let macro =
+                fun env' args ->
+                    let bindings = zipWith (fun binding value -> (extractVar binding, ref value)) parameters args
+                    let env'' = extends env bindings
+                    eval env' (eval env'' defExpr)
+                |> Macro
+            updateEnv env name macro
+            macro
+
+        | List (Atom "defmacro" :: _) ->
+            MalformException "(defmacro name (parameters) <s-expr>)"
+            |> raise
 
         | List [Atom "let"; List (pairs : Lisp list); expr] ->
             let (atoms, vals) =
@@ -74,11 +110,7 @@ module Eval =
 
         | List [Atom "lambda"; List parameters; expr] ->
             parameters |> List.map ensureAtom |> ignore
-            let fn args =
-                let bindings = zipWith (fun binding value -> (extractVar binding, ref value)) parameters args
-                let env' = extends env bindings
-                eval env' expr
-            Func fn
+            lambda env parameters expr |> Lambda
 
         | List (Atom "lambda" :: _) ->
             MalformException "lambda function expects list of parameters and S-Expression body\n(lambda <params> <s-expr>)"
@@ -107,13 +139,23 @@ module Eval =
             | _           -> x
 
         | List (x :: xs) ->
-            let funVar = eval env x
-            let args = xs |> List.map (eval env)
-            match funVar with
-            | Func funcall -> funcall args
-            | _ -> NotFunctionException funVar |> raise
+            match eval env x with
+            | Func fn -> apply env fn xs
+            | Lambda fn -> apply env fn xs
+            | Macro macro -> macro env xs
+            | x -> NotFunctionException x |> raise
 
         | _ -> MalformException "Malform expression" |> raise
+
+    and lambda env parameters expr =
+        fun args ->
+            let bindings = zipWith (fun binding value -> (extractVar binding, ref value)) parameters args
+            let env' = extends env bindings
+            eval env' expr
+
+    and apply env fn args =
+        let args' = args |> List.map (eval env)
+        fn args'
 
     and evalForms (env: Environment) (forms: Lisp list) =
         match forms with
@@ -124,8 +166,10 @@ module Eval =
             evalForms env xs
 
     let evalSource source =
-        let ast = Parser.readContent source
-        evalForms environment ast
+        try
+            let ast = Parser.readContent source
+            evalForms environment ast
+        with ex -> showError ex |> failwith
 
     let private getStdLibContent () =
         let assembly = (typeof<Lisp>).GetTypeInfo().Assembly;

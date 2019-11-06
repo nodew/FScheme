@@ -12,6 +12,8 @@ type Lisp =
     | Atom of string
     | String of string
     | Func of IFunc
+    | Lambda of IFunc
+    | Macro of IMacro
     | List of Lisp list
     override x.Equals other =
         let otherType = other.GetType()
@@ -34,6 +36,8 @@ and Application = Lisp list
 
 and IFunc = Lisp list -> Lisp
 
+and IMacro = (Environment -> (Lisp list) -> Lisp)
+
 and Frame = Map<string, Lisp ref> ref
 
 and Environment = Frame list
@@ -42,6 +46,7 @@ and Environment = Frame list
 exception TypeMismatchException of string * Lisp
 exception NumArgsException of int * Lisp list
 exception UnboundedVarException of string
+exception VarHasBeenBoundedException of string
 exception MalformException of string
 exception NotFunctionException of Lisp
 exception ExpectedListException of string
@@ -65,6 +70,8 @@ module lispVal =
         | String s -> sprintf "\"%s\"" s
         | List lst -> unwordsList lst |> sprintf "(%s)"
         | Func _         -> "(internal function)"
+        | Lambda _       -> "(lambda function)"
+        | Macro _        -> "(Macro function)"
 
     and private unwordsList lst = lst |> List.map printExpr |> unwords
 
@@ -74,6 +81,7 @@ module lispVal =
         | NumArgsException (n, args) -> args |> unwordsList |> sprintf "Error Number Arguments, expected %d, received args %s" n
         | TypeMismatchException (txt, var) -> var |> printExpr |> sprintf "Error Type Mismatch: %s %s" txt
         | UnboundedVarException var -> var |> sprintf "Error Unbounded variable: %s"
+        | VarHasBeenBoundedException var -> var |> sprintf "Error variable has been defined: %s"
         | MalformException s -> s |> sprintf "Error Bad Special Form: %s"
         | NotFunctionException var -> var |> printExpr |> sprintf "Error Not a Function: %s"
         | ExpectedListException s -> sprintf "Error Expected List in funciton %s" s

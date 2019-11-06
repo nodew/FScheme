@@ -64,10 +64,14 @@ module Primitives =
 
     let car = function
         | [List (x :: _)] -> x
+        | [List []] -> Nil
+        | [] -> Nil
         | _ -> ExpectedListException "car" |> raise
 
     let cdr = function
         | [List (_ :: xs)] -> List xs
+        | [List []] -> Nil
+        | [] -> Nil
         | _ -> ExpectedListException "cdr" |> raise
 
     let list args = List args
