@@ -52,5 +52,5 @@ dotnet publish FScheme  -r win-x64 -c Release -o ..\bin  /p:PublishSingleFile=tr
 
 ## Reference
 
-- [R7RS] https://small.r7rs.org/attachment/r7rs.pdf
+- [R7RS](https://small.r7rs.org/attachment/r7rs.pdf)
 - [Write You a Scheme V2](https://github.com/write-you-a-scheme-v2/scheme)
