@@ -1,6 +1,6 @@
 # FScheme
 
-An experimental scheme implementation based on [Write You a Scheme V2](https://github.com/write-you-a-scheme-v2/scheme), but writing in F#.
+An experimental scheme implementation in F#, based on standard R7RS
 
 ## Development
 
@@ -49,3 +49,8 @@ dotnet publish FScheme  -r win-x64 -c Release -o ..\bin  /p:PublishSingleFile=tr
 - [] Pretty print
 - [] Test coverage
 - [] Macro
+
+## Reference
+
+- [R7RS] https://small.r7rs.org/attachment/r7rs.pdf
+- [Write You a Scheme V2](https://github.com/write-you-a-scheme-v2/scheme)
