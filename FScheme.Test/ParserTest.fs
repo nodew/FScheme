@@ -3,6 +3,7 @@ namespace FScheme.Test
 open NUnit.Framework
 open FsUnit
 open FScheme.Core
+open Swensen.Unquote
 
 module ParserTests =
     [<Test>]
@@ -11,16 +12,22 @@ module ParserTests =
         Parser.readExpr "-123" |>  should equal (Lisp.Number (Integer -123))
         Parser.readExpr "1.23" |>  should equal (Lisp.Number (Float 1.23))
         Parser.readExpr "-1.23" |>  should equal (Lisp.Number (Float -1.23))
+        Parser.readExpr "#b101" |>  should equal (Lisp.Number (Integer 5))
+        Parser.readExpr "#o101" |>  should equal (Lisp.Number (Integer 65))
+        Parser.readExpr "#x1a1" |>  should equal (Lisp.Number (Integer 417))
 
     [<Test>]
     let ``parse atom`` () =
         Parser.readExpr "atom" |> should equal (Lisp.Atom "atom")
-        Parser.readExpr "atom.test" |> should equal (Lisp.Atom "atom.test")
         Parser.readExpr "atom/test" |> should equal (Lisp.Atom "atom/test")
 
     [<Test>]
     let ``parse nil`` () =
         Parser.readExpr "'()" |> should equal Lisp.Nil
+    
+    [<Test>]
+    let ``parse char`` () =
+        Parser.readExpr "#\c" |> should equal (Lisp.Char 'c')
 
     [<Test>]
     let ``parse string`` () =
@@ -35,6 +42,10 @@ module ParserTests =
     let ``parse list`` () =
         Parser.readExpr "(1 2 3)" |> should equal (Lisp.List [Lisp.Number (Integer 1); Lisp.Number (Integer 2); Lisp.Number (Integer 3)])
         Parser.readExpr "(a b c)" |> should equal (Lisp.List [Lisp.Atom "a"; Lisp.Atom "b"; Lisp.Atom "c"])
+    
+    [<Test>]
+    let ``parse dotted list`` () =
+        Parser.readExpr "(1 . 2)" |> should equal (Lisp.DottedList ([Lisp.Number (Integer 1)], Lisp.Number (Integer 2)))
 
     [<Test>]
     let ``parse quoted list`` () =
@@ -44,21 +55,11 @@ module ParserTests =
             should equal (Lisp.List [Lisp.Atom "quote"; Lisp.List [Lisp.Atom "a"; Lisp.Atom "b"; Lisp.Atom "c"]])
 
     [<Test>]
-    let ``parse define`` () =
-        Parser.readExpr @"(define
-                        (add a b)
-                        (+ a b))"
-            |> should equal (Lisp.List [
-                                Lisp.Atom "define";
-                                Lisp.List [Lisp.Atom "add"; Lisp.Atom "a"; Lisp.Atom "b"];
-                                Lisp.List [Lisp.Atom "+"; Lisp.Atom "a"; Lisp.Atom "b"]
-                            ])
-
-    [<Test>]
     let ``print ast`` () =
-        let expr = "(define (add a b) (+ a b))"
+        let expr = "(define add (lambda (a b) (+ a b)))"
         Parser.readExpr expr
-        |> fun result -> printExpr result |> should equal expr
+        |> fun result -> 
+            printExpr result |> should equal expr
 
     [<Test>]
     let ``parse comment`` () =
@@ -67,3 +68,8 @@ module ParserTests =
                     (a)"
         Parser.readContent expr |> Assert.NotNull
 
+    [<Test>]
+    let ``parse quasiquote and unquote`` () =
+        test <@ Parser.readExpr @"`'()" = (Lisp.List [(Atom "quasiquote"); Nil]) @>
+        test <@ Parser.readExpr @"`(,a)" = (Lisp.List [(Atom "quasiquote"); Lisp.List[Lisp.List [Atom "unquote"; Atom "a"]]]) @>
+        test <@ Parser.readExpr @"`(,@a)" = (Lisp.List [(Atom "quasiquote"); Lisp.List[Lisp.List [Atom "unquote-slicing"; Atom "a"]]]) @>

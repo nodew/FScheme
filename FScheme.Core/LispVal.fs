@@ -10,11 +10,13 @@ type Lisp =
     | Bool of bool
     | Number of Number
     | Atom of string
+    | Char of char
     | String of string
     | Func of IFunc
-    | Lambda of IFunc
     | Macro of IMacro
     | List of Lisp list
+    | DottedList of head: Lisp list * tail: Lisp
+    | Vector of Lisp array
     override x.Equals other =
         let otherType = other.GetType()
         let lispType = typeof<Lisp>
@@ -24,9 +26,12 @@ type Lisp =
             | Nil, Nil -> true
             | Bool a, Bool b -> a = b
             | Atom a, Atom b -> a = b
+            | Char a, Char b -> a = b
             | Number a, Number b -> a = b
             | String a, String b -> a = b
             | List a, List b -> List.zip a b |> List.forall (fun (a, b) -> a = b)
+            | DottedList (h1, t1), DottedList (h2, t2) ->
+                List.zip (t1 :: h1) (t2 :: h2) |> List.forall (fun (a, b) -> a = b)
             | _, _ -> false
         else
             false
@@ -70,7 +75,6 @@ module lispVal =
         | String s -> sprintf "\"%s\"" s
         | List lst -> unwordsList lst |> sprintf "(%s)"
         | Func _         -> "(internal function)"
-        | Lambda _       -> "(lambda function)"
         | Macro _        -> "(Macro function)"
 
     and private unwordsList lst = lst |> List.map printExpr |> unwords

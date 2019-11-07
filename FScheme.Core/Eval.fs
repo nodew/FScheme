@@ -51,7 +51,8 @@ module Eval =
         | Bool bool -> Bool bool
         | String s -> Lisp.String s
         | Atom x -> (lookup env x).Value
-        | List [Atom "quote"; expr] ->
+        | List [Atom "quote"; expr] -> expr
+        | List [Atom "quasiquote"; expr] ->
             let rec unquote = function
                 | List [Atom "unquote"; e] -> eval env e
                 | List (Atom "unquote" :: _) -> MalformException "unquote (too many args)" |> raise
@@ -68,29 +69,6 @@ module Eval =
             eval env (Atom name)
         | List (Atom "define" :: _) ->
             MalformException "(define name <s-expr>)" |> raise
-
-        | List [Atom "defun"; Atom name; List parameters; defExpr] ->
-            parameters |> List.map ensureAtom |> ignore
-            let expr = lambda env parameters defExpr |> Func
-            updateEnv env name expr
-            expr
-        | List (Atom "defun" :: _) ->
-            MalformException "(defun name (parameters) <s-expr>)" |> raise
-
-        | List [Atom "defmacro"; Atom name; List parameters; defExpr] ->
-            parameters |> List.map ensureAtom |> ignore
-            let macro =
-                fun env' args ->
-                    let bindings = zipWith (fun binding value -> (extractVar binding, ref value)) parameters args
-                    let env'' = extends env bindings
-                    eval env' (eval env'' defExpr)
-                |> Macro
-            updateEnv env name macro
-            macro
-
-        | List (Atom "defmacro" :: _) ->
-            MalformException "(defmacro name (parameters) <s-expr>)"
-            |> raise
 
         | List [Atom "let"; List (pairs : Lisp list); expr] ->
             let (atoms, vals) =
@@ -110,7 +88,7 @@ module Eval =
 
         | List [Atom "lambda"; List parameters; expr] ->
             parameters |> List.map ensureAtom |> ignore
-            lambda env parameters expr |> Lambda
+            lambda env parameters expr
 
         | List (Atom "lambda" :: _) ->
             MalformException "lambda function expects list of parameters and S-Expression body\n(lambda <params> <s-expr>)"
@@ -141,7 +119,6 @@ module Eval =
         | List (x :: xs) ->
             match eval env x with
             | Func fn -> apply env fn xs
-            | Lambda fn -> apply env fn xs
             | Macro macro -> macro env xs
             | x -> NotFunctionException x |> raise
 
@@ -152,6 +129,7 @@ module Eval =
             let bindings = zipWith (fun binding value -> (extractVar binding, ref value)) parameters args
             let env' = extends env bindings
             eval env' expr
+        |> Func
 
     and apply env fn args =
         let args' = args |> List.map (eval env)

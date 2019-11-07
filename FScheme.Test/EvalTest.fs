@@ -54,6 +54,6 @@ module EvalTest =
         test <@ evalTest expr = "3" @>
 
     [<Test>]
-    let ``eval unquote`` () =
-        let expr = @"(let ((a 1) (b 2)) '(,a ,b 3))"
+    let ``eval quasiquote`` () =
+        let expr = @"(let ((a 1) (b 2)) `(,a ,b 3))"
         test <@ evalTest expr = "(1 2 3)" @>
