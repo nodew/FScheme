@@ -39,6 +39,11 @@ module ParserTests =
         Parser.readExpr "#f" |> should equal (Lisp.Bool false)
 
     [<Test>]
+    let ``parse vector`` () =
+        Parser.readExpr "#(1 2 3)" |> should equal (Lisp.Vector [| Lisp.Number (Integer 1); Lisp.Number (Integer 2); Lisp.Number (Integer 3) |])
+        Parser.readExpr "#(a b c)" |> should equal (Lisp.Vector [| Lisp.Atom "a"; Lisp.Atom "b"; Lisp.Atom "c" |])
+
+    [<Test>]
     let ``parse list`` () =
         Parser.readExpr "(1 2 3)" |> should equal (Lisp.List [Lisp.Number (Integer 1); Lisp.Number (Integer 2); Lisp.Number (Integer 3)])
         Parser.readExpr "(a b c)" |> should equal (Lisp.List [Lisp.Atom "a"; Lisp.Atom "b"; Lisp.Atom "c"])

@@ -29,9 +29,9 @@ type Lisp =
             | Char a, Char b -> a = b
             | Number a, Number b -> a = b
             | String a, String b -> a = b
-            | List a, List b -> List.zip a b |> List.forall (fun (a, b) -> a = b)
-            | DottedList (h1, t1), DottedList (h2, t2) ->
-                List.zip (t1 :: h1) (t2 :: h2) |> List.forall (fun (a, b) -> a = b)
+            | Vector a, Vector b -> a = b
+            | List a, List b -> a = b
+            | DottedList (h1, t1), DottedList (h2, t2) -> h1 = h2 && t1 = t2
             | _, _ -> false
         else
             false

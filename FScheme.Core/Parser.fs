@@ -27,22 +27,29 @@ module Parser =
     let radix unit ns =
         ns |> List.map toInt |> List.fold (fun s n -> s * unit + n) 0
 
-    let integer = suffix .>>. many1 digit
-                    |>> fun (sign, nums) ->
-                            let dec = radix 10 nums
-                            match sign with
-                            | Some '-' -> 0 - dec
-                            | _ -> dec
+    let integer = parse {
+        let! sign = suffix
+        let! nums = many1 digit
+        let dec = radix 10 nums
+        let n = match sign with
+                | Some '-' -> 0 - dec
+                | _ -> dec
+        return n
+    }
 
-    let decimal =
-        suffix .>>. many1 digit .>>. (pchar '.' >>. many1 digit)
-            |>> fun ((sign, intPart), decimalPart) ->
-                let n = radix 10 intPart
-                let dec = radix 10 decimalPart
-                let result = (double)n + (double)dec * Math.Pow(0.1, (float)(decimalPart.Length))
-                match sign with
-                | Some '-' -> 0.0 - result
-                | _ -> result
+    let decimal = parse {
+        let! sign = suffix
+        let! intPart = many1 digit
+        do! pchar '.' |>> ignore
+        let! decimalPart = many1 digit
+        let n = radix 10 intPart
+        let dec = radix 10 decimalPart
+        let d = (double)n + (double)dec * Math.Pow(0.1, (float)(decimalPart.Length))
+        let result = match sign with
+                     | Some '-' -> (double)0 - d
+                     | _ -> d
+        return result
+    }
 
     let number = attempt (decimal |>> Float) <|> attempt (integer |>> Integer) |>> Number
 
@@ -58,19 +65,24 @@ module Parser =
 
     let spacesOrComment = spaces >>. opt (pComment <|> pNestedComment) >>. spaces
 
-    let stringLiteral: Parser<Lisp, unit> =
-        let normalChar = satisfy (fun c -> c <> '\\' && c <> '"')
-        let unescape c = match c with
-                         | 'n' -> '\n'
-                         | 'r' -> '\r'
-                         | 't' -> '\t'
-                         | 'b' -> '\b'
-                         | 'a' -> '\a'
-                         | c   -> c
-        let escapedChar = pstring "\\" >>. (anyOf "\\nrt\"" |>> unescape)
-        let s = between (pstring "\"") (pstring "\"")
-                        (manyChars (normalChar <|> escapedChar))
-        s |>> Lisp.String
+    let normalChar = satisfy (fun c -> c <> '\\' && c <> '"')
+    
+    let unescape c = match c with
+                        | 'n' -> '\n'
+                        | 'r' -> '\r'
+                        | 't' -> '\t'
+                        | 'b' -> '\b'
+                        | 'a' -> '\a'
+                        | c   -> c
+    
+    let escapedChar = pstring "\\" >>. (anyOf "\\nrt\"" |>> unescape)
+    
+    let stringLiteral = parse {
+        do! pstring "\"" |>> ignore
+        let! s = (manyChars (normalChar <|> escapedChar))
+        do! pstring "\"" |>> ignore
+        return (Lisp.String s)
+    }
 
     let parens = between (pchar '(') (pchar ')')
 
