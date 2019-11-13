@@ -46,59 +46,16 @@ module Eval =
 
     let rec eval (env: Environment) expr =
         match expr with
-        | Nil -> Nil
-        | Number x -> Number x
-        | Bool bool -> Bool bool
-        | String s -> Lisp.String s
+        | Nil | Number _ | Bool _ | Char _ | String _ as lit -> lit
         | Atom x -> (lookup env x).Value
+        | Vector v -> v |> Array.map (fun item -> eval env item) |> Vector
         | List [Atom "quote"; expr] -> expr
-        | List [Atom "quasiquote"; expr] ->
-            let rec unquote = function
-                | List [Atom "unquote"; e] -> eval env e
-                | List (Atom "unquote" :: _) -> MalformException "unquote (too many args)" |> raise
-                | List lst -> List.fold (fun acc item -> (unquote item) :: acc) [] lst |> List.rev |> List
-                | e -> e
-            unquote expr
-
-        | List [Atom "begin"; rest] -> evalForms env [rest]
+        | List [Atom "quasiquote"; expr] -> evalQuasiquote env expr
         | List (Atom "begin" :: rest) -> evalForms env rest
-
-        | List [Atom "define"; Atom name; defExpr] ->
-            let expr = eval env defExpr
-            updateEnv env name expr |> ignore
-            eval env (Atom name)
-        | List (Atom "define" :: _) ->
-            MalformException "(define name <s-expr>)" |> raise
-
-        | List [Atom "let"; List (pairs : Lisp list); expr] ->
-            let (atoms, vals) =
-                pairs
-                |> List.fold (fun (atoms, vals) pair ->
-                    match pair with
-                    | List [binding; value] -> ((extractVar binding) :: atoms, ref (eval env value) :: vals)
-                    | _ -> MalformException "let function expects list of parameters\n(let ((atom value) ...) <s-expr>)"
-                           |> raise
-                ) ([], [])
-            let bindings = List.zip atoms vals
-            let env' = extends env bindings
-            eval env' expr
-        | List (Atom "let" :: _) ->
-            MalformException "let function expects list of parameters and S-Expression body\n(let <pairs> <s-expr>)"
-            |> raise
-
-        | List [Atom "lambda"; List parameters; expr] ->
-            parameters |> List.map ensureAtom |> ignore
-            lambda env parameters expr
-
-        | List (Atom "lambda" :: _) ->
-            MalformException "lambda function expects list of parameters and S-Expression body\n(lambda <params> <s-expr>)"
-            |> raise
-
-        | List [Atom "if"; pred; trueExpr; falseExpr] ->
-            if testTrue (eval env pred) then
-                eval env trueExpr
-            else eval env falseExpr
-        | List (Atom "if" :: _) -> MalformException "(if <expr> <s-expr> <s-expr>)" |> raise
+        | List (Atom "define" :: rest) -> evalDefine env rest
+        | List (Atom "lambda" :: rest) -> evalLambda env rest
+        | List (Atom "let" :: rest)  -> evalLet env rest
+        | List (Atom "if" :: rest) -> evalIf env rest
 
         | List [Atom "cdr"; List [Atom "quote"; List (x :: xs)]] -> List xs
         | List [Atom "cdr"; List (x :: xs)] ->
@@ -108,7 +65,7 @@ module Eval =
                 eval env (List [Atom "cdr"; value])
             | _           -> List xs
 
-        | List [Atom "car"; List [Atom "quote"; List (x :: xs)]] -> x
+        | List [Atom "car"; List [Atom "quote"; List (x :: _)]] -> x
         | List [Atom "car"; List (x :: xs)] ->
             match x with
             | Atom  _ ->
@@ -124,16 +81,101 @@ module Eval =
 
         | _ -> MalformException "Malform expression" |> raise
 
-    and lambda env parameters expr =
-        fun args ->
+    and lambda env (parameters: Lisp list) exprs =
+        fun (args: Lisp list) ->
+            if args.Length <> parameters.Length then
+                NumArgsException (parameters.Length, args) |> raise
             let bindings = zipWith (fun binding value -> (extractVar binding, ref value)) parameters args
             let env' = extends env bindings
-            eval env' expr
+            evalForms env' exprs
         |> Func
 
     and apply env fn args =
         let args' = args |> List.map (eval env)
         fn args'
+
+    and evalQuasiquote env expr =
+        let rec unquote x =
+            match x with
+            | List [Atom "unquote"; e] -> eval env e
+            | List (Atom "unquote" :: _) -> MalformException "unquote (too many args)" |> raise
+            | List (Atom "quasiquote" :: _) -> x
+            | List (Atom "quote" :: _) -> x
+            | List lst -> List.fold (fun acc item -> (unquote item) :: acc) [] lst |> List.rev |> List
+            | _ -> x
+        unquote expr
+
+    and evalDefine env = function
+        | [(Atom name); value] ->
+            let expr = eval env value
+            updateEnv env name expr |> ignore
+            expr
+        | List (Atom name :: parameters) :: body ->
+            let fn (args: Lisp list) =
+                if args.Length <> parameters.Length then
+                    NumArgsException (parameters.Length, args) |> raise
+                let bindings = zipWith (fun binding value -> (extractVar binding, ref value)) parameters args
+                let env' = extends env bindings
+                evalForms env' body
+            let expr = Func fn
+            updateEnv env name expr |> ignore
+            expr
+        | DottedList ((Atom name :: parameters), rest) :: body ->
+            let fn (args: Lisp list) =
+                if args.Length < parameters.Length then
+                    NumArgsException (parameters.Length, args) |> raise
+                let (arg', rest') = List.splitAt parameters.Length args
+                let bindings = zipWith (fun binding value -> (extractVar binding, ref value)) (rest :: parameters) (List rest' :: arg')
+                let env' = extends env bindings
+                evalForms env' body
+            let expr = Func fn
+            updateEnv env name expr |> ignore
+            expr
+        | _ -> MalformException "(define name <s-expr>) or (define (name params...) (s-expr))" |> raise
+    
+    and evalLambda env = function
+        | Atom s :: body ->
+            lambda env [Atom s] body
+        | (List parameters) :: body ->
+            List.map ensureAtom parameters |> ignore
+            lambda env parameters body
+        | (DottedList (parameters, rest)) :: body ->
+            let fn (args: Lisp list) =
+                if args.Length < parameters.Length then
+                    NumArgsException (parameters.Length, args) |> raise
+                let (arg', rest') = List.splitAt parameters.Length args
+                let bindings = zipWith (fun binding value -> (extractVar binding, ref value)) (rest :: parameters) ((List rest') :: arg')
+                let env' = extends env bindings
+                evalForms env' body
+            let expr = Func fn
+            expr
+        | _ -> 
+            MalformException "lambda function expects list of parameters and S-Expression body\n(lambda <params> <s-expr>)"
+            |> raise
+
+    and evalIf env = function
+        | [pred; trueExpr; falseExpr] ->
+            if testTrue (eval env pred) then
+                eval env trueExpr
+            else eval env falseExpr
+        | _ -> MalformException "(if <expr> <s-expr> <s-expr>)" |> raise
+
+    and evalLet env = function
+        | List (pairs : Lisp list) :: exprs ->
+            let (atoms, vals) =
+                pairs
+                |> List.fold (fun (atoms, vals) pair ->
+                    match pair with
+                    | List [binding; value] -> ((extractVar binding) :: atoms, ref (eval env value) :: vals)
+                    | _ -> MalformException "let function expects list of parameters\n(let ((atom value) ...) <s-expr>)"
+                           |> raise
+                ) ([], [])
+            let bindings = List.zip atoms vals
+            let env' = extends env bindings
+            evalForms env' exprs
+        | _ ->
+            MalformException "let function expects list of parameters and S-Expression body\n(let <pairs> <s-expr>)"
+            |> raise
 
     and evalForms (env: Environment) (forms: Lisp list) =
         match forms with

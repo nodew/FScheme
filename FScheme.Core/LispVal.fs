@@ -65,17 +65,34 @@ module lispVal =
 
     let private unwords = String.concat " "
 
+    let escape s =
+        s 
+        |> Seq.toList 
+        |> List.map (fun c -> 
+                        match c with
+                        | '\n' -> "\\\n"
+                        | '\r' -> "\\\r"
+                        | '\t' -> "\\\t"
+                        | '\b' -> "\\\b"
+                        | '\a' -> "\\\a"
+                        | a -> sprintf "%c" a)
+        |> Seq.ofList
+        |> String.concat ""
+
     let rec printExpr = function
         | Nil -> "'()"
         | Bool true -> "#t"
         | Bool false -> "#f"
+        | Char c -> sprintf @"#\%c" c
         | Number (Integer n) -> string(n)
         | Number (Float n) -> string(n)
         | Atom atom -> atom
-        | String s -> sprintf "\"%s\"" s
-        | List lst -> unwordsList lst |> sprintf "(%s)"
-        | Func _         -> "(internal function)"
-        | Macro _        -> "(Macro function)"
+        | String s -> sprintf "\"%s\"" (escape s)
+        | DottedList (head, tail) -> unwordsList head |> fun h -> sprintf "'(%s . %s)" h (printExpr tail)
+        | List lst -> unwordsList lst |> sprintf "'(%s)"
+        | Vector v -> v |> Seq.toList |> unwordsList |> sprintf "#(%s)"
+        | Func _         -> "#<procedure>"
+        | Macro _        -> "#<macro>"
 
     and private unwordsList lst = lst |> List.map printExpr |> unwords
 

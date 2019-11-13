@@ -130,7 +130,7 @@ module Parser =
                     | Some t -> DottedList (head, t)
                     | None -> List head
 
-    and application : Parser<Application, unit> = spacesOrComment >>. (sepEndBy pListVal (spacesOrComment)) .>> eof
+    and application : Parser<Application, unit> = manyLispVal .>> eof
 
     and readExpr source =
         match run (spaces >>. lispVal .>> spaces .>> eof) source with
