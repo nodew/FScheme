@@ -44,151 +44,168 @@ module Eval =
         | _, [] -> []
         | (a1 :: aa), (b1 :: bb) -> op a1 b1 :: (zipWith op aa bb)
 
-    let rec eval (env: Environment) expr =
-        match expr with
-        | Nil | Number _ | Bool _ | Char _ | String _ as lit -> lit
-        | Atom x -> (lookup env x).Value
-        | Vector v -> v |> Array.map (fun item -> eval env item) |> Vector
-        | List [Atom "quote"; expr] -> expr
-        | List [Atom "quasiquote"; expr] -> evalQuasiquote env expr
-        | List (Atom "begin" :: rest) -> evalForms env rest
-        | List (Atom "define" :: rest) -> evalDefine env rest
-        | List (Atom "lambda" :: rest) -> evalLambda env rest
-        | List (Atom "let" :: rest)  -> evalLet env rest
-        | List (Atom "if" :: rest) -> evalIf env rest
+    let id x = x
 
-        | List [Atom "cdr"; List [Atom "quote"; List (x :: xs)]] -> List xs
+    let rec eval (cont: Continuation) (env: Environment) expr =
+        match expr with
+        | Nil | Number _ | Bool _ | Char _ | String _ as lit -> lit |> cont
+        | Atom x -> (lookup env x).Value |> cont
+        | Vector v -> v |> List.ofArray |> evalFoldList (fun x -> x |> Array.ofList |> Vector |> cont) env
+        | List [Atom "quote"; expr] -> expr |> cont
+        | List [Atom "quasiquote"; expr] -> evalQuasiquote cont env expr
+        | List (Atom "begin" :: rest) -> evalForms cont env rest
+        | List (Atom ("set!") :: rest) -> evalSet cont env rest
+        | List (Atom "define" :: rest) -> evalDefine cont env rest
+        | List (Atom "lambda" :: rest) -> evalLambda cont env rest
+        | List (Atom "let" :: rest)  -> evalLet cont env rest
+        | List (Atom "if" :: rest) -> evalIf cont env rest
+        | List (Atom "call/cc":: rest) -> evalCallCC cont env rest
+        | List [Atom "cdr"; List [Atom "quote"; List (x :: xs)]] -> List xs |> cont
         | List [Atom "cdr"; List (x :: xs)] ->
             match x with
             | Atom  _ ->
-                let value = eval env (List (x :: xs))
-                eval env (List [Atom "cdr"; value])
+                let value = eval cont env (List (x :: xs))
+                eval cont env (List [Atom "cdr"; value])
             | _           -> List xs
 
         | List [Atom "car"; List [Atom "quote"; List (x :: _)]] -> x
         | List [Atom "car"; List (x :: xs)] ->
             match x with
             | Atom  _ ->
-                let value = eval env (List (x :: xs))
-                eval env (List [Atom "car"; value])
-            | _           -> x
+                let value = eval cont env (List (x :: xs))
+                eval cont env (List [Atom "car"; value])
+            | _           -> x |> cont
 
         | List (x :: xs) ->
-            match eval env x with
-            | Func fn -> apply env fn xs
-            | Macro macro -> macro env xs
-            | x -> NotFunctionException x |> raise
+            let cont' = function
+                | Func fn -> apply cont env fn xs
+                | Continuation cont -> 
+                    match xs with 
+                    | [] -> cont Nil
+                    | [rtn] -> cont rtn 
+                    | _ -> MalformException "call/cc (too many args)" |> raise
+                | Macro macro -> macro env xs
+                | x -> NotFunctionException x |> raise
+
+            eval cont' env x
 
         | _ -> MalformException "Malform expression" |> raise
 
-    and lambda env (parameters: Lisp list) exprs =
-        fun (args: Lisp list) ->
+    and evalFoldList cont env (lst: Lisp list) = 
+        let rec fold' (acc: Lisp list) = function
+        | h :: t -> eval (fun x -> fold' (x :: acc) t) env h
+        | [] -> acc |> List.rev |> cont
+        fold' [] lst
+
+    and lambda env (parameters: Lisp list) body =
+        fun cont (args: Lisp list) ->
             if args.Length <> parameters.Length then
                 NumArgsException (parameters.Length, args) |> raise
-            let bindings = zipWith (fun binding value -> (extractVar binding, ref value)) parameters args
-            let env' = extends env bindings
-            evalForms env' exprs
+            bindArgsEval cont env parameters args body
         |> Func
 
-    and apply env fn args =
-        let args' = args |> List.map (eval env)
-        fn args'
+    and lambda2 env (parameters: Lisp list) extra body =
+        fun cont (args: Lisp list) ->
+            if args.Length < parameters.Length then
+                NumArgsException (parameters.Length, args) |> raise
+            let (args', extra') = List.splitAt parameters.Length args
+            bindArgsEval cont env (extra :: parameters) (List extra' :: args') body
+        |> Func
+ 
+    and bindArgsEval cont env parameters args body = 
+        let bindings = zipWith (fun binding value -> (extractVar binding, ref value)) parameters args
+        let env' = extends env bindings
+        evalForms cont env' body
 
-    and evalQuasiquote env expr =
-        let rec unquote x =
+    and apply cont env fn args =
+        let cont' args' = fn cont args'
+        evalFoldList cont' env args
+
+    and evalQuasiquote cont env expr =
+        let rec unquote cont' x =
             match x with
-            | List [Atom "unquote"; e] -> eval env e
+            | List [Atom "unquote"; e] -> eval cont' env e
             | List (Atom "unquote" :: _) -> MalformException "unquote (too many args)" |> raise
-            | List (Atom "quasiquote" :: _) -> x
-            | List (Atom "quote" :: _) -> x
-            | List lst -> List.fold (fun acc item -> (unquote item) :: acc) [] lst |> List.rev |> List
-            | _ -> x
-        unquote expr
+            | List (Atom "quasiquote" :: _) -> x |> cont'
+            | List [] -> Nil |> cont'
+            | List lst -> 
+                let rec mapunquote acc = function
+                | h' :: t' ->
+                    unquote (fun x -> mapunquote (x :: acc) t') h'
+                | [] -> List(List.rev acc)
+                mapunquote [] lst |> cont'
+            | _ -> x |> cont'
+        unquote cont expr
 
-    and evalDefine env = function
-        | [(Atom name); value] ->
-            let expr = eval env value
-            updateEnv env name expr |> ignore
-            expr
+    and evalSet cont env = function
+        | [Atom name; expr] -> eval (fun x -> (lookup env name) := x; Nil |> cont) env expr
+        | _ -> MalformException "set!" |> raise
+
+    and evalDefine cont env = function
+        | [(Atom name); value] -> eval (fun x -> updateEnv env name x; Nil |> cont) env value
         | List (Atom name :: parameters) :: body ->
-            let fn (args: Lisp list) =
-                if args.Length <> parameters.Length then
-                    NumArgsException (parameters.Length, args) |> raise
-                let bindings = zipWith (fun binding value -> (extractVar binding, ref value)) parameters args
-                let env' = extends env bindings
-                evalForms env' body
-            let expr = Func fn
+            let expr = lambda env parameters body
             updateEnv env name expr |> ignore
-            expr
-        | DottedList ((Atom name :: parameters), rest) :: body ->
-            let fn (args: Lisp list) =
-                if args.Length < parameters.Length then
-                    NumArgsException (parameters.Length, args) |> raise
-                let (arg', rest') = List.splitAt parameters.Length args
-                let bindings = zipWith (fun binding value -> (extractVar binding, ref value)) (rest :: parameters) (List rest' :: arg')
-                let env' = extends env bindings
-                evalForms env' body
-            let expr = Func fn
+            expr |> cont
+        | DottedList ((Atom name :: parameters), extra) :: body ->
+            let expr = lambda2 env parameters extra body
             updateEnv env name expr |> ignore
-            expr
+            expr |> cont
         | _ -> MalformException "(define name <s-expr>) or (define (name params...) (s-expr))" |> raise
     
-    and evalLambda env = function
+    and evalLambda cont env = function
         | Atom s :: body ->
-            lambda env [Atom s] body
+            lambda env [Atom s] body |> cont
         | (List parameters) :: body ->
             List.map ensureAtom parameters |> ignore
-            lambda env parameters body
-        | (DottedList (parameters, rest)) :: body ->
-            let fn (args: Lisp list) =
-                if args.Length < parameters.Length then
-                    NumArgsException (parameters.Length, args) |> raise
-                let (arg', rest') = List.splitAt parameters.Length args
-                let bindings = zipWith (fun binding value -> (extractVar binding, ref value)) (rest :: parameters) ((List rest') :: arg')
-                let env' = extends env bindings
-                evalForms env' body
-            let expr = Func fn
-            expr
+            lambda env parameters body |> cont
+        | (DottedList (parameters, extra)) :: body ->
+            lambda2 env parameters extra body |> cont
         | _ -> 
             MalformException "lambda function expects list of parameters and S-Expression body\n(lambda <params> <s-expr>)"
             |> raise
 
-    and evalIf env = function
-        | [pred; trueExpr; falseExpr] ->
-            if testTrue (eval env pred) then
-                eval env trueExpr
-            else eval env falseExpr
+    and evalIf cont env = function
+        | [cond; trueExpr; falseExpr] ->
+            let cont' x =
+                if testTrue x then
+                    eval cont env trueExpr
+                else eval cont env falseExpr
+            eval cont' env cond
         | _ -> MalformException "(if <expr> <s-expr> <s-expr>)" |> raise
 
-    and evalLet env = function
-        | List (pairs : Lisp list) :: exprs ->
-            let (atoms, vals) =
-                pairs
-                |> List.fold (fun (atoms, vals) pair ->
-                    match pair with
-                    | List [binding; value] -> ((extractVar binding) :: atoms, ref (eval env value) :: vals)
-                    | _ -> MalformException "let function expects list of parameters\n(let ((atom value) ...) <s-expr>)"
-                           |> raise
-                ) ([], [])
-            let bindings = List.zip atoms vals
-            let env' = extends env bindings
-            evalForms env' exprs
+    and evalLet cont env = function
+        | List (pairs : Lisp list) :: body ->
+            let rec mapbind acc = function
+                | List([Atom(s); e]) :: t -> eval (fun x -> mapbind ((s, ref x) :: acc) t) env e
+                | [] ->
+                    let frame = List.rev acc
+                    let env' = extends env frame
+                    evalForms cont env' body
+                | _ -> failwith "Malformed 'let' binding."
+            mapbind [] pairs
         | _ ->
             MalformException "let function expects list of parameters and S-Expression body\n(let <pairs> <s-expr>)"
             |> raise
+    
+    and evalCallCC cont env = function
+    | [callee] ->
+        let cont' = function
+            | Func fn -> fn cont [Continuation(cont)]
+            | m -> MalformException "call/cc" |> raise
+        eval cont' env callee
+    | _ -> MalformException "call/cc" |> raise
 
-    and evalForms (env: Environment) (forms: Lisp list) =
-        match forms with
-        | [] -> Nil
-        | [x] -> eval env x
-        | x :: xs ->
-            eval env x |> ignore
-            evalForms env xs
+    and evalForms cont (env: Environment) (forms: Lisp list) =
+        let rec fold' prev = function
+        | h :: t -> eval (fun x -> fold' x t) env h
+        | [] -> prev |> cont
+        fold' Nil forms
 
     let evalSource source =
         try
             let ast = Parser.readContent source
-            evalForms environment ast
+            evalForms id environment ast
         with ex -> showError ex |> failwith
 
     let private getStdLibContent () =
@@ -202,7 +219,7 @@ module Eval =
     let loadStdEnv () =
         let stdlibContent = getStdLibContent ()
         let stdLibExprs = Parser.readContent stdlibContent
-        evalForms environment stdLibExprs |> ignore
+        evalForms id environment stdLibExprs |> ignore
 
     loadStdEnv ()
 
@@ -221,4 +238,4 @@ module Eval =
 
     let evalExpr env source =
         let expr = Parser.readExpr source
-        evalForms env [expr]
+        evalForms id env [expr]

@@ -85,7 +85,8 @@ module Primitives =
         | [Number (Integer n)] -> exit n
         | _ -> MalformException "(exit) or (exit exitCode)" |> raise
 
-    let mkFn fn = ref (Func fn)
+    let mkFn fn = 
+        ref (Func (fun cont args -> fn args |> cont))
 
     let primEnv = Map.ofList [
         ("+", binopFold (numOp (+)) (Lisp.Number (Integer 0)) |> mkFn)

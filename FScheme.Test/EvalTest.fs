@@ -46,7 +46,7 @@ module EvalTest =
     [<Test>]
     let ``eval cons`` () =
         let expr = @"(cons 1 2)"
-        test <@ evalTest expr = "(1 2)" @>
+        test <@ evalTest expr = "'(1 2)" @>
 
     [<Test>]
     let ``eval stdlib`` () =
@@ -84,5 +84,13 @@ module EvalTest =
         let expr1 = @"
             (define (cdrParam a . b) `,b)
             (cdrParam 1 2 3)"
-        test <@ evalTest expr1 = "(2 3)" @>
+        test <@ evalTest expr1 = "'(2 3)" @>
 
+    [<Test>]
+    let ``eval call/cc`` () =
+        let expr1 = @"
+           (call/cc 
+                (lambda (k) 
+                    (k 1) 
+                    3))"
+        test <@ evalTest expr1 = "1" @>

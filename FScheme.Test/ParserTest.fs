@@ -60,13 +60,6 @@ module ParserTests =
             should equal (Lisp.List [Lisp.Atom "quote"; Lisp.List [Lisp.Atom "a"; Lisp.Atom "b"; Lisp.Atom "c"]])
 
     [<Test>]
-    let ``print ast`` () =
-        let expr = "(define add (lambda (a b) (+ a b)))"
-        Parser.readExpr expr
-        |> fun result -> 
-            printExpr result |> should equal expr
-
-    [<Test>]
     let ``parse comment`` () =
         let expr = @"
                     ; this is a comment

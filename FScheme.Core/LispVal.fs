@@ -16,6 +16,7 @@ type Lisp =
     | Macro of IMacro
     | List of Lisp list
     | DottedList of head: Lisp list * tail: Lisp
+    | Continuation of Continuation
     | Vector of Lisp array
     override x.Equals other =
         let otherType = other.GetType()
@@ -39,7 +40,9 @@ type Lisp =
 
 and Application = Lisp list
 
-and IFunc = Lisp list -> Lisp
+and Continuation = Lisp -> Lisp
+
+and IFunc = Continuation -> Lisp list -> Lisp
 
 and IMacro = (Environment -> (Lisp list) -> Lisp)
 
@@ -93,6 +96,7 @@ module lispVal =
         | Vector v -> v |> Seq.toList |> unwordsList |> sprintf "#(%s)"
         | Func _         -> "#<procedure>"
         | Macro _        -> "#<macro>"
+        | Continuation _ -> "#<continuation>"
 
     and private unwordsList lst = lst |> List.map printExpr |> unwords
 
