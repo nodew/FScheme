@@ -7,7 +7,7 @@ open FParsec
 open Swensen.Unquote
 
 module EvalTest =
-    let evalTest source = source |> Eval.evalText |> printExpr
+    let evalTest source = source |> Eval.evalSource |> showVal
 
     [<Test>]
     let ``eval native expression`` () =
@@ -46,12 +46,7 @@ module EvalTest =
     [<Test>]
     let ``eval cons`` () =
         let expr = @"(cons 1 2)"
-        test <@ evalTest expr = "'(1 2)" @>
-
-    [<Test>]
-    let ``eval stdlib`` () =
-        let expr = @"(cadr '((1 2) 3))"
-        test <@ evalTest expr = "3" @>
+        test <@ evalTest expr = "'(1 . 2)" @>
 
     [<Test>]
     let ``eval quasiquote`` () =
@@ -87,10 +82,24 @@ module EvalTest =
         test <@ evalTest expr1 = "'(2 3)" @>
 
     [<Test>]
+    let ``eval set!`` () =
+        let expr1 = @"
+           (begin
+                (define x 1)
+                (set! x 2)
+                x)"
+        test <@ evalTest expr1 = "2" @>
+
+    [<Test>]
     let ``eval call/cc`` () =
         let expr1 = @"
            (call/cc 
-                (lambda (k) 
-                    (k 1) 
+                (lambda (k)
+                    (k 1)
                     3))"
         test <@ evalTest expr1 = "1" @>
+
+    [<Test>]
+    let ``eval eval`` () =
+        let expr1 = @"(eval '(+ 1 2 3))"
+        test <@ evalTest expr1 = "6" @>

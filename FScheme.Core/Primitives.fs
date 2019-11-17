@@ -14,7 +14,7 @@ module Primitives =
     let binopFold op farg args =
         match args with
         | [a; b]  -> op a b
-        | a :: rest -> List.fold op farg args
+        | a :: rest -> op a (List.fold op farg rest)
         | []-> NumArgsException (2, args) |> raise
 
     let numOp op x y =
@@ -58,20 +58,21 @@ module Primitives =
 
     let cons (exprs : Lisp list) =
         match exprs with
-        | [x; List y] -> List (x :: y)
-        | [x; y] -> List [x; y]
+        | [x; List []] -> List [x]
+        | [x; List xs] -> List (x :: xs)
+        | [x; DottedList (xs, t)] -> DottedList (x :: xs, t)
+        | [x; y] -> DottedList ([x], y)
         | _ -> ExpectedListException "cons, in second argumnet" |> raise
 
     let car = function
         | [List (x :: _)] -> x
-        | [List []] -> Nil
-        | [] -> Nil
+        | [DottedList ((x :: _) , _)] -> x
         | _ -> ExpectedListException "car" |> raise
 
     let cdr = function
         | [List (_ :: xs)] -> List xs
-        | [List []] -> Nil
-        | [] -> Nil
+        | [DottedList ([_], x)] -> x
+        | [DottedList (_ :: xs, x)] -> DottedList (xs, x)
         | _ -> ExpectedListException "cdr" |> raise
 
     let list args = List args
@@ -85,33 +86,35 @@ module Primitives =
         | [Number (Integer n)] -> exit n
         | _ -> MalformException "(exit) or (exit exitCode)" |> raise
 
-    let mkFn fn = 
-        ref (Func (fun cont args -> fn args |> cont))
+    let mkFn (name, fn) = 
+        (name, ref (Func (name, (fun cont args -> fn args |> cont))))
 
-    let primEnv = Map.ofList [
-        ("+", binopFold (numOp (+)) (Lisp.Number (Integer 0)) |> mkFn)
-        ("*", binopFold (numOp (*)) (Lisp.Number (Integer 1)) |> mkFn)
-        ("-", numOp (-) |> binop |> mkFn)
-        ("/", numOp (/) |> binop |> mkFn)
-        ("string-append", binopFold (stringOp (+)) (Lisp.String "") |> mkFn)
-        ("<", numCmp (<) |> binop |> mkFn)
-        (">", numCmp (>) |> binop |> mkFn)
-        (">=", numCmp (>=) |> binop |> mkFn)
-        ("<=", numCmp (<=) |> binop |> mkFn)
-        ("==", numCmp (=) |> binop |> mkFn)
-        ("even?", integerBool (fun x -> x % 2 = 0) |> unop |> mkFn)
-        ("odd?", integerBool (fun x -> x % 2 <> 0) |> unop |> mkFn)
-        ("neg?", numBool (fun x -> x < 0.) |> unop |> mkFn)
-        ("pos?", numBool (fun x -> x > 0.) |> unop |> mkFn)
-        ("eq?", eqCmd |> binop |> mkFn)
-        ("null?", (eqCmd Nil) |> unop |> mkFn)
-        ("not", notOp |> unop |> mkFn)
-        ("cons", cons |> mkFn)
-        ("car", car |> mkFn)
-        ("cdr", cdr |> mkFn)
-        ("list", list |> mkFn)
-        ("display", display |> unop |> mkFn)
-        ("show", unop (printExpr >> Lisp.String) |> mkFn)
-        ("exit", exit |> mkFn)
-    ]
+    let primEnv = 
+        [
+            ("+", binopFold (numOp (+)) (Lisp.Number (Integer 0)))
+            ("*", binopFold (numOp (*)) (Lisp.Number (Integer 1)))
+            ("-", numOp (-) |> binop)
+            ("/", numOp (/) |> binop)
+            ("string-append", binopFold (stringOp (+)) (Lisp.String ""))
+            ("<", numCmp (<) |> binop)
+            (">", numCmp (>) |> binop)
+            (">=", numCmp (>=) |> binop)
+            ("<=", numCmp (<=) |> binop)
+            ("==", numCmp (=) |> binop)
+            ("even?", integerBool (fun x -> x % 2 = 0) |> unop)
+            ("odd?", integerBool (fun x -> x % 2 <> 0) |> unop)
+            ("neg?", numBool (fun x -> x < 0.) |> unop)
+            ("pos?", numBool (fun x -> x > 0.) |> unop)
+            ("eq?", eqCmd |> binop)
+            ("null?", (eqCmd Nil) |> unop)
+            ("not", notOp |> unop)
+            ("cons", cons)
+            ("car", car)
+            ("cdr", cdr)
+            ("list", list)
+            ("display", display |> unop)
+            ("show", unop (showVal >> Lisp.String))
+            ("exit", exit)]
+        |> List.map mkFn
+        |> Map.ofList
 

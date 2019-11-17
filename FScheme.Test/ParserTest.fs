@@ -28,11 +28,14 @@ module ParserTests =
     [<Test>]
     let ``parse char`` () =
         Parser.readExpr "#\c" |> should equal (Lisp.Char 'c')
+        Parser.readExpr "#\\newline" |> should equal (Lisp.Char '\n')
 
     [<Test>]
     let ``parse string`` () =
+        Parser.readExpr "\"str\\ning\"" |> should equal (Lisp.String "str\ning")
         Parser.readExpr "\"str\\\\ning\"" |> should equal (Lisp.String "str\\ning")
-
+        Parser.readExpr "\"str\\\\ning\"" |> showVal |> should equal "\"str\\\\ning\""
+        Parser.readExpr "\"str\\ning\"" |> showVal |> should equal "\"str\\ning\""
     [<Test>]
     let ``parse bool`` () =
         Parser.readExpr "#t" |> should equal (Lisp.Bool true)

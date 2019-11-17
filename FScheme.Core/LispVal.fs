@@ -12,7 +12,8 @@ type Lisp =
     | Atom of string
     | Char of char
     | String of string
-    | Func of IFunc
+    | Func of name: string * fn: IFunc
+    | Lambda of IFunc
     | Macro of IMacro
     | List of Lisp list
     | DottedList of head: Lisp list * tail: Lisp
@@ -61,54 +62,39 @@ exception ExpectedListException of string
 exception PErrorException of string
 
 [<AutoOpen>]
-module lispVal =
+module LispVal =
     let numToFloat = function
         | Integer a -> float a
         | Float a -> a
 
-    let private unwords = String.concat " "
-
-    let escape s =
-        s 
-        |> Seq.toList 
-        |> List.map (fun c -> 
-                        match c with
-                        | '\n' -> "\\\n"
-                        | '\r' -> "\\\r"
-                        | '\t' -> "\\\t"
-                        | '\b' -> "\\\b"
-                        | '\a' -> "\\\a"
-                        | a -> sprintf "%c" a)
-        |> Seq.ofList
-        |> String.concat ""
-
-    let rec printExpr = function
+    let rec showVal = function
         | Nil -> "'()"
         | Bool true -> "#t"
         | Bool false -> "#f"
         | Char c -> sprintf @"#\%c" c
         | Number (Integer n) -> string(n)
         | Number (Float n) -> string(n)
-        | Atom atom -> atom
+        | Atom atom -> sprintf "'%s" atom
         | String s -> sprintf "\"%s\"" (escape s)
-        | DottedList (head, tail) -> unwordsList head |> fun h -> sprintf "'(%s . %s)" h (printExpr tail)
+        | DottedList (head, tail) -> unwordsList head |> fun h -> sprintf "'(%s . %s)" h (showVal tail)
+        | List [Atom "quote"; expr] -> sprintf "'%s" (showVal expr)
+        | List [Atom "quasiquote"; expr] -> sprintf "'%s" (showVal expr)
         | List lst -> unwordsList lst |> sprintf "'(%s)"
         | Vector v -> v |> Seq.toList |> unwordsList |> sprintf "#(%s)"
-        | Func _         -> "#<procedure>"
+        | Func (name, _) -> sprintf "#<procedure:%s>" name
+        | Lambda _       -> "#<procedure>"
         | Macro _        -> "#<macro>"
         | Continuation _ -> "#<continuation>"
 
-    and private unwordsList lst = lst |> List.map printExpr |> unwords
-
-    and printApp (app: Application) = app |> List.map printExpr |> String.concat "\n"
+    and private unwordsList lst = lst |> List.map showVal |> unwords
 
     and showError = function
         | NumArgsException (n, args) -> args |> unwordsList |> sprintf "Error Number Arguments, expected %d, received args %s" n
-        | TypeMismatchException (txt, var) -> var |> printExpr |> sprintf "Error Type Mismatch: %s %s" txt
+        | TypeMismatchException (txt, var) -> var |> showVal |> sprintf "Error Type Mismatch: %s %s" txt
         | UnboundedVarException var -> var |> sprintf "Error Unbounded variable: %s"
         | VarHasBeenBoundedException var -> var |> sprintf "Error variable has been defined: %s"
         | MalformException s -> s |> sprintf "Error Bad Special Form: %s"
-        | NotFunctionException var -> var |> printExpr |> sprintf "Error Not a Function: %s"
+        | NotFunctionException var -> var |> showVal |> sprintf "Error Not a Function: %s"
         | ExpectedListException s -> sprintf "Error Expected List in funciton %s" s
         | PErrorException s -> sprintf "Parser Error, expression cannot evaluate: %s" s
         | ex -> sprintf "Unexpected internal error: %s" (ex.ToString())

@@ -12,6 +12,6 @@ module REPL =
 
     let rec runREPL () =
         printf "REPL> "
-        let input = Console.ReadLine()
-        safeExec input |> Option.map (printExpr >> printfn "%s") |> ignore
+        let input = Console.ReadLine ()
+        safeExec input |> Option.map (showVal >> printfn "%s") |> ignore
         runREPL ()

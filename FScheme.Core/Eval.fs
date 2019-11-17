@@ -1,9 +1,5 @@
 ﻿namespace FScheme.Core
 
-open System.IO
-open System.Reflection
-open System.Text
-open Microsoft.Extensions.FileProviders
 open FParsec
 
 module Eval =
@@ -44,8 +40,6 @@ module Eval =
         | _, [] -> []
         | (a1 :: aa), (b1 :: bb) -> op a1 b1 :: (zipWith op aa bb)
 
-    let id x = x
-
     let rec eval (cont: Continuation) (env: Environment) expr =
         match expr with
         | Nil | Number _ | Bool _ | Char _ | String _ as lit -> lit |> cont
@@ -60,35 +54,13 @@ module Eval =
         | List (Atom "let" :: rest)  -> evalLet cont env rest
         | List (Atom "if" :: rest) -> evalIf cont env rest
         | List (Atom "call/cc":: rest) -> evalCallCC cont env rest
-        | List [Atom "cdr"; List [Atom "quote"; List (x :: xs)]] -> List xs |> cont
-        | List [Atom "cdr"; List (x :: xs)] ->
-            match x with
-            | Atom  _ ->
-                let value = eval cont env (List (x :: xs))
-                eval cont env (List [Atom "cdr"; value])
-            | _           -> List xs
-
-        | List [Atom "car"; List [Atom "quote"; List (x :: _)]] -> x
-        | List [Atom "car"; List (x :: xs)] ->
-            match x with
-            | Atom  _ ->
-                let value = eval cont env (List (x :: xs))
-                eval cont env (List [Atom "car"; value])
-            | _           -> x |> cont
-
-        | List (x :: xs) ->
-            let cont' = function
-                | Func fn -> apply cont env fn xs
-                | Continuation cont -> 
-                    match xs with 
-                    | [] -> cont Nil
-                    | [rtn] -> cont rtn 
-                    | _ -> MalformException "call/cc (too many args)" |> raise
-                | Macro macro -> macro env xs
-                | x -> NotFunctionException x |> raise
-
-            eval cont' env x
-
+        | List [Atom "apply"; fn; List args] -> apply cont env fn args
+        | List [Atom "eval"; expr] -> eval (fun expr' -> eval cont env expr') env expr
+        | List [Atom "load"; filename] -> 
+            match filename with 
+            | String filename' -> load filename' |> cont 
+            | _ -> MalformException "load" |> raise
+        | List (fn :: xs) -> apply cont env fn xs
         | _ -> MalformException "Malform expression" |> raise
 
     and evalFoldList cont env (lst: Lisp list) = 
@@ -102,7 +74,6 @@ module Eval =
             if args.Length <> parameters.Length then
                 NumArgsException (parameters.Length, args) |> raise
             bindArgsEval cont env parameters args body
-        |> Func
 
     and lambda2 env (parameters: Lisp list) extra body =
         fun cont (args: Lisp list) ->
@@ -110,7 +81,6 @@ module Eval =
                 NumArgsException (parameters.Length, args) |> raise
             let (args', extra') = List.splitAt parameters.Length args
             bindArgsEval cont env (extra :: parameters) (List extra' :: args') body
-        |> Func
  
     and bindArgsEval cont env parameters args body = 
         let bindings = zipWith (fun binding value -> (extractVar binding, ref value)) parameters args
@@ -118,8 +88,18 @@ module Eval =
         evalForms cont env' body
 
     and apply cont env fn args =
-        let cont' args' = fn cont args'
-        evalFoldList cont' env args
+        let cont' = function
+        | Func (_, f) | Lambda f -> 
+            let cont' args' = f cont args'
+            evalFoldList cont' env args
+        | Continuation cont -> 
+            match args with 
+            | [] -> cont Nil
+            | [rtn] -> eval cont env rtn
+            | _ -> MalformException "call/cc (too many args)" |> raise
+        | Macro macro -> macro env args
+        | x -> NotFunctionException x |> raise
+        eval cont' env fn
 
     and evalQuasiquote cont env expr =
         let rec unquote cont' x =
@@ -144,23 +124,23 @@ module Eval =
     and evalDefine cont env = function
         | [(Atom name); value] -> eval (fun x -> updateEnv env name x; Nil |> cont) env value
         | List (Atom name :: parameters) :: body ->
-            let expr = lambda env parameters body
+            let expr = Func (name, lambda env parameters body)
             updateEnv env name expr |> ignore
             expr |> cont
         | DottedList ((Atom name :: parameters), extra) :: body ->
-            let expr = lambda2 env parameters extra body
+            let expr = Func (name, lambda2 env parameters extra body)
             updateEnv env name expr |> ignore
             expr |> cont
         | _ -> MalformException "(define name <s-expr>) or (define (name params...) (s-expr))" |> raise
     
     and evalLambda cont env = function
         | Atom s :: body ->
-            lambda env [Atom s] body |> cont
+            lambda env [Atom s] body |> Lambda |> cont
         | (List parameters) :: body ->
             List.map ensureAtom parameters |> ignore
-            lambda env parameters body |> cont
+            lambda env parameters body |> Lambda |> cont
         | (DottedList (parameters, extra)) :: body ->
-            lambda2 env parameters extra body |> cont
+            lambda2 env parameters extra body |> Lambda |> cont
         | _ -> 
             MalformException "lambda function expects list of parameters and S-Expression body\n(lambda <params> <s-expr>)"
             |> raise
@@ -191,7 +171,7 @@ module Eval =
     and evalCallCC cont env = function
     | [callee] ->
         let cont' = function
-            | Func fn -> fn cont [Continuation(cont)]
+            | Lambda fn -> fn cont [Continuation(cont)]
             | m -> MalformException "call/cc" |> raise
         eval cont' env callee
     | _ -> MalformException "call/cc" |> raise
@@ -202,38 +182,19 @@ module Eval =
         | [] -> prev |> cont
         fold' Nil forms
 
+    and load filename =
+        let content = loadFileContent filename
+        let stdLibExprs = Parser.readContent content
+        evalForms id environment stdLibExprs
+
     let evalSource source =
         try
             let ast = Parser.readContent source
             evalForms id environment ast
         with ex -> showError ex |> failwith
 
-    let private getStdLibContent () =
-        let assembly = (typeof<Lisp>).GetTypeInfo().Assembly;
-        let embeddedProvider = EmbeddedFileProvider(assembly, "FScheme.Core");
-        let file = embeddedProvider.GetFileInfo(@"lib\stdlib.scm");
-        let stream = file.CreateReadStream();
-        use reader = new StreamReader(stream, Encoding.UTF8)
-        reader.ReadToEnd()
-
-    let loadStdEnv () =
-        let stdlibContent = getStdLibContent ()
-        let stdLibExprs = Parser.readContent stdlibContent
-        evalForms id environment stdLibExprs |> ignore
-
-    loadStdEnv ()
-
-    let getFileContent (filepath: string) =
-        if File.Exists(filepath) then
-            File.ReadAllText(filepath)
-        else
-            failwith "File does not exist."
-
     let evalFile filepath =
         let source = getFileContent filepath
-        evalSource source
-
-    let evalText source =
         evalSource source
 
     let evalExpr env source =

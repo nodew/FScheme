@@ -65,29 +65,41 @@ module Parser =
 
     let spacesOrComment = spaces >>. opt (pComment <|> pNestedComment) >>. spaces
 
-    let normalChar = satisfy (fun c -> c <> '\\' && c <> '"')
-    
-    let unescape c = match c with
-                        | 'n' -> '\n'
-                        | 'r' -> '\r'
-                        | 't' -> '\t'
-                        | 'b' -> '\b'
-                        | 'a' -> '\a'
-                        | c   -> c
-    
-    let escapedChar = pstring "\\" >>. (anyOf "\\nrt\"" |>> unescape)
-    
+    let escapedChar = parse {
+        do! pchar '\\' |>> ignore
+        let! c = anyChar
+        return (unescape c)
+    }
+
     let stringLiteral = parse {
         do! pstring "\"" |>> ignore
-        let! s = (manyChars (normalChar <|> escapedChar))
+        let! s = (manyChars (escapedChar <|> noneOf "\""))
         do! pstring "\"" |>> ignore
         return (Lisp.String s)
+    }
+
+    let parseChar = parse {
+        do! attempt (pstring "#\\") |>> ignore
+        let! c = anyChar
+        let! r = manyChars letter
+        let pchr = sprintf "%c%s" c r;
+        let c = match pchr with
+                | "space"     -> Lisp.Char ' '
+                | "newline"   -> Lisp.Char '\n'
+                | "alarm"     -> Lisp.Char '\a' 
+                | "backspace" -> Lisp.Char '\b'
+                | "return"    -> Lisp.Char '\n'
+                | "tab"       -> Lisp.Char '\t'
+                | _ when r = "" -> Lisp.Char c
+                | _ -> failwith "Not support"
+        return c
     }
 
     let parens = between (pchar '(') (pchar ')')
 
     let rec lispVal = parse.Delay (fun () ->
         choice [
+            parseChar;
             hashVal;
             nil;
             number;
@@ -109,7 +121,6 @@ module Parser =
                 pchar 'o' >>. digit8 |>> radix 8 |>> Integer |>> Number
                 pchar 'd' >>. many1 digit |>> radix 10 |>> Integer |>> Number
                 pchar 'x' >>. digit16 |>> radix 16 |>> Integer |>> Number
-                pchar '\\' >>. anyChar |>> Lisp.Char
                 pchar '(' >>. (manyLispVal .>> pchar ')') |>> Array.ofList |>> Vector
             ]
 
